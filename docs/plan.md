@@ -85,7 +85,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 3a. Match by name (SteamGridDB search + Steam store search), show the top results with covers, and the user confirms or picks another (Lutris-style)
 - [x] 3b. Art set per game: hero, grid (portrait), logo, icon; the user can replace any image with a local file
 - [x] 3c. Auto tags and categories from Steam genres and tags (+ our own: `co-op`, `needs steam`, `gacha`, `modded`)
-- [ ] 3d. Image cache sized for the screen (as SomeShell does with wallpapers) so Qt never holds a 4K decode
+- [x] 3d. Image cache sized for the screen (as SomeShell does with wallpapers) so Qt never holds a 4K decode
 - [ ] 3e. Build check: Steam `buildid` against the latest public one; a badge when an update is out
 
 ## Phase 4: Core UI

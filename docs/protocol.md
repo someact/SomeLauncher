@@ -106,7 +106,7 @@ On connect the daemon first sends `hello`:
 ```
 - `kind`: `steam` (run through Steam), `proton` (umu-run), `native`, `hoyo`, `minecraft` (a Prism instance).
 - `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
-- `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Automatic art comes, best first, from SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
+- `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Each is sized for this machine so Qt never holds a 4K decode: heroes at most the widest connected monitor's width (from `/sys/class/drm`), grids 600x900, logos 1280x640, icons 256x256, never enlarged; JPEG, or PNG when transparent. When the widest monitor changes, the next daemon start makes them all again from their origins. Automatic art comes, best first, from SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
 - `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import. After an import, details and art for new games are fetched by background jobs. A match brings, in the background, `description`, `genres`, `features` (Steam's feature list), `steamTags` (Steam's user tags from SteamSpy), `developers`, `publishers`, `release`, and `categories`: the automatic library rows (`Co-op` for co-op games, then the main genre).
 - `tags`: automatic, recomputed whenever what they come from changes: `co-op`, `multiplayer`, `needs steam` (runner), `gacha` (hoyo), `modded` (XXMI on, or a Minecraft mod loader), the genres and Steam's top 6 user tags; lowercase.
 - `categories`: the user's library rows; while empty the library uses `meta.categories`.
@@ -125,6 +125,7 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `defaultProton` | the Proton build games use when they name none (any name `proton.list` knows, or a path); the newest GE-Proton when unset |
 | `prefixDir` | where new wine prefixes go (`<prefixDir>/<game name>`); `Prefixes` in the first `gameDirs` folder when unset |
 | `umuRun` | the umu-run to use; else `umu-run` on PATH, else the copy Lutris ships |
+| `artScreenWidth` | the screen width art was last sized for (the daemon keeps it) |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching

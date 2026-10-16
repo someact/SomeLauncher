@@ -94,6 +94,49 @@ pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// The widest connected monitor's width in pixels, from `/sys/class/drm` (1920 when unknown).
+pub fn screen_width(drm: &Path) -> u32 {
+    let widths = std::fs::read_dir(drm).into_iter().flatten().flatten().filter_map(|e| {
+        let p = e.path();
+        let connected = std::fs::read_to_string(p.join("status")).is_ok_and(|s| s.trim() == "connected");
+        let mode = std::fs::read_to_string(p.join("modes")).ok()?;
+        connected.then(|| mode.lines().next()?.split('x').next()?.parse::<u32>().ok()).flatten()
+    });
+    widths.max().unwrap_or(1920)
+}
+
+/// The box each kind is fitted into: heroes span the screen, the rest are shown small.
+pub fn target(kind: &str, screen: u32) -> (u32, u32) {
+    match kind {
+        "hero" => (screen, screen),
+        "grid" => (600, 900),
+        "logo" => (1280, 640),
+        _ => (256, 256),
+    }
+}
+
+/// Fits an image into `(w, h)` (never larger than it is): JPEG, or PNG when it has
+/// transparency. A JPEG or PNG that already fits is kept as it is.
+pub fn fit(bytes: &[u8], (w, h): (u32, u32)) -> Result<(Vec<u8>, &'static str)> {
+    use image::{GenericImageView, ImageFormat};
+    let ext = image_ext(bytes).context("not an image")?;
+    let img = image::load_from_memory(bytes).context("decoding the image")?;
+    let (iw, ih) = img.dimensions();
+    if iw <= w && ih <= h && ext != "webp" {
+        return Ok((bytes.to_vec(), ext));
+    }
+    let img = if iw > w || ih > h { img.resize(w, h, image::imageops::FilterType::Lanczos3) } else { img };
+    let mut out = std::io::Cursor::new(Vec::new());
+    if img.color().has_alpha() {
+        img.write_to(&mut out, ImageFormat::Png)?;
+        Ok((out.into_inner(), "png"))
+    } else {
+        let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90).encode_image(&rgb)?;
+        Ok((out.into_inner(), "jpg"))
+    }
+}
+
 fn art_dir(game: i64) -> PathBuf {
     somelauncher_proto::paths::cache_dir().join("art").join(game.to_string())
 }
@@ -108,13 +151,16 @@ pub fn remove_files(game: i64, kind: &str) {
     }
 }
 
-/// Writes an image into the cache as `<kind>-<origin hash>.<ext>` (a new name
-/// per origin, so the UI never shows a stale cached decode) and removes the old one.
-pub fn store(game: i64, kind: &str, origin: &str, bytes: &[u8]) -> Result<PathBuf> {
-    let ext = image_ext(bytes).context("not an image")?;
+/// Writes an image, fitted for `screen`, into the cache as `<kind>-<hash>.<ext>`
+/// (a new name per origin and size, so the UI never shows a stale cached
+/// decode) and removes the old one. Decoding is slow: call it off the runtime.
+pub fn store(game: i64, kind: &str, origin: &str, bytes: &[u8], screen: u32) -> Result<PathBuf> {
+    let size = target(kind, screen);
+    let (bytes, ext) = fit(bytes, size)?;
+    let bytes = &bytes;
     let dir = art_dir(game);
     std::fs::create_dir_all(&dir)?;
-    let hash = hex::encode(&Sha256::digest(origin.as_bytes())[..4]);
+    let hash = hex::encode(&Sha256::digest(format!("{origin} {}x{}", size.0, size.1).as_bytes())[..4]);
     let file = dir.join(format!("{kind}-{hash}.{ext}"));
     for old in std::fs::read_dir(&dir)?.flatten().map(|e| e.path()) {
         let name = old.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -189,9 +235,60 @@ pub fn need(row: Option<&Row>, force: bool) -> Need {
     }
 }
 
+/// `store` on a blocking thread.
+pub async fn store_sized(game: i64, kind: &'static str, origin: String, bytes: Vec<u8>, screen: u32) -> Result<PathBuf> {
+    tokio::task::spawn_blocking(move || store(game, kind, &origin, &bytes, screen)).await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn encoded(w: u32, h: u32, alpha: bool, format: image::ImageFormat) -> Vec<u8> {
+        let img = if alpha {
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 128])))
+        } else {
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(w, h, image::Rgb([10, 20, 30])))
+        };
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, format).unwrap();
+        out.into_inner()
+    }
+
+    fn dims(bytes: &[u8]) -> (u32, u32) {
+        use image::GenericImageView;
+        image::load_from_memory(bytes).unwrap().dimensions()
+    }
+
+    #[test]
+    fn images_are_fitted_never_enlarged() {
+        let hero = encoded(3840, 1240, false, image::ImageFormat::Jpeg);
+        let (out, ext) = fit(&hero, target("hero", 1920)).unwrap();
+        assert_eq!((dims(&out), ext), ((1920, 620), "jpg"));
+
+        let small = encoded(300, 450, false, image::ImageFormat::Png);
+        let (out, ext) = fit(&small, target("grid", 1920)).unwrap();
+        assert_eq!((out, ext), (small, "png"), "kept as it is");
+
+        let logo = encoded(2000, 800, true, image::ImageFormat::Png);
+        let (out, ext) = fit(&logo, target("logo", 1920)).unwrap();
+        assert_eq!((dims(&out), ext), ((1280, 512), "png"), "transparency kept");
+
+        let webp = encoded(100, 100, false, image::ImageFormat::WebP);
+        assert_eq!(fit(&webp, target("icon", 1920)).unwrap().1, "jpg", "webp is converted");
+    }
+
+    #[test]
+    fn the_widest_connected_monitor() {
+        let t = tempfile::tempdir().unwrap();
+        for (name, status, mode) in [("card1-DP-1", "connected", "2560x1440\n1920x1080\n"), ("card1-HDMI-A-1", "connected", "1920x1080\n"), ("card1-DP-2", "disconnected", "")] {
+            std::fs::create_dir_all(t.path().join(name)).unwrap();
+            std::fs::write(t.path().join(name).join("status"), format!("{status}\n")).unwrap();
+            std::fs::write(t.path().join(name).join("modes"), mode).unwrap();
+        }
+        assert_eq!(screen_width(t.path()), 2560);
+        assert_eq!(screen_width(&t.path().join("none")), 1920);
+    }
 
     #[test]
     fn image_types_by_magic() {

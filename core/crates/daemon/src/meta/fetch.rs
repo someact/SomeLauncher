@@ -10,12 +10,18 @@ use std::sync::Arc;
 
 impl State {
     /// Brings a game's art up to date; returns whether anything changed.
-    pub(crate) async fn fetch_art(&self, game: &Game, force: bool) -> Result<bool> {
+    /// With `resize`, every image is made again from its origin (the screen changed).
+    pub(crate) async fn fetch_art(&self, game: &Game, force: bool, resize: bool) -> Result<bool> {
         let key = self.setting_str("steamGridDbKey")?;
+        let screen = art::screen_width(std::path::Path::new("/sys/class/drm"));
         let mut changed = false;
         for kind in art::KINDS {
             let current = art::row(&self.db.lock().unwrap(), game.id, kind)?;
-            let origins = match art::need(current.as_ref(), force) {
+            let need = match &current {
+                Some(r) if resize => Need::Reload(r.origin.clone()),
+                _ => art::need(current.as_ref(), force),
+            };
+            let origins = match need {
                 Need::Nothing => continue,
                 Need::Reload(origin) => vec![origin],
                 Need::Find => art::origins(&self.http, key.as_deref(), &self.home, game, kind).await,
@@ -24,11 +30,15 @@ impl State {
             let mut stored = None;
             for origin in origins {
                 // The same origin as now, with its file there: nothing to do
-                if current.as_ref().is_some_and(|r| r.origin == origin && r.file.as_ref().is_some_and(|f| f.is_file())) {
+                if !resize && current.as_ref().is_some_and(|r| r.origin == origin && r.file.as_ref().is_some_and(|f| f.is_file())) {
                     stored = current.clone();
                     break;
                 }
-                match art::load(&self.http, &origin).await.and_then(|bytes| art::store(game.id, kind, &origin, &bytes)) {
+                let file = match art::load(&self.http, &origin).await {
+                    Ok(bytes) => art::store_sized(game.id, kind, origin.clone(), bytes, screen).await,
+                    Err(e) => Err(e),
+                };
+                match file {
                     Ok(file) => {
                         stored = Some(Row { origin, custom, file: Some(file) });
                         break;
@@ -50,14 +60,14 @@ impl State {
     /// Fetches art for one game and tells everyone when it changed.
     pub(crate) async fn refresh_art(&self, id: i64, force: bool) -> Result<()> {
         let Some(game) = crate::games::get(&self.db.lock().unwrap(), id)? else { return Ok(()) };
-        if self.fetch_art(&game, force).await? {
+        if self.fetch_art(&game, force, false).await? {
             self.emit("library.changed", json!({ "ids": [id] }));
         }
         Ok(())
     }
 
     /// Every game's missing art, as a background job (`download.*` events, `done`/`total` in games).
-    pub(crate) fn fetch_all_art(self: &Arc<Self>, force: bool) -> Result<String> {
+    pub(crate) fn fetch_all_art(self: &Arc<Self>, force: bool, resize: bool) -> Result<String> {
         let id = "art".to_string();
         let state = Arc::downgrade(self);
         crate::jobs::spawn(self, &id, "Game art", move |progress| async move {
@@ -67,7 +77,7 @@ impl State {
             let total = games.len() as u64;
             for (i, game) in games.iter().enumerate() {
                 let Some(s) = state.upgrade() else { return Ok(()) };
-                match s.fetch_art(game, force).await {
+                match s.fetch_art(game, force, resize).await {
                     Ok(true) => s.emit("library.changed", json!({ "ids": [game.id] })),
                     Ok(false) => {}
                     Err(e) => tracing::warn!(game = game.id, "art: {e:#}"),
@@ -80,11 +90,12 @@ impl State {
     }
 
     /// The user's own art for one kind (a file or a URL), or back to automatic with None.
-    pub(crate) async fn set_art(&self, id: i64, kind: &str, origin: Option<&str>) -> Result<()> {
+    pub(crate) async fn set_art(&self, id: i64, kind: &'static str, origin: Option<&str>) -> Result<()> {
         match origin {
             Some(origin) => {
                 let bytes = art::load(&self.http, origin).await?;
-                let file = art::store(id, kind, origin, &bytes)?;
+                let screen = art::screen_width(std::path::Path::new("/sys/class/drm"));
+                let file = art::store_sized(id, kind, origin.to_string(), bytes, screen).await?;
                 let row = Row { origin: origin.into(), custom: true, file: Some(file) };
                 art::set_row(&self.db.lock().unwrap(), id, kind, Some(&row))?;
                 self.emit("library.changed", json!({ "ids": [id] }));
@@ -156,6 +167,22 @@ impl State {
                 tracing::warn!(id, "art: {e:#}");
             }
         });
+    }
+
+    /// Art is sized for the screen: when the widest monitor changed since the
+    /// last start, every image is made again for the new one.
+    pub async fn check_screen(self: &Arc<Self>) -> Result<()> {
+        let width = art::screen_width(std::path::Path::new("/sys/class/drm"));
+        let last = crate::db::setting(&self.db.lock().unwrap(), "artScreenWidth")?.and_then(|v| v.as_u64());
+        if last == Some(width as u64) {
+            return Ok(());
+        }
+        crate::db::set_setting(&self.db.lock().unwrap(), "artScreenWidth", &json!(width))?;
+        if last.is_some() {
+            tracing::info!(width, "the screen changed; resizing art");
+            self.fetch_all_art(false, true)?;
+        }
+        Ok(())
     }
 
     /// The automatic choices for one kind, to pick another from.

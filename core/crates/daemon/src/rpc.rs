@@ -237,7 +237,7 @@ impl State {
                 }
                 None => {
                     let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
-                    let id = self.fetch_all_art(force).map_err(|e| Error::new("busy", format!("{e:#}")))?;
+                    let id = self.fetch_all_art(force, false).map_err(|e| Error::new("busy", format!("{e:#}")))?;
                     Ok(json!({ "id": id }))
                 }
             },
@@ -338,7 +338,7 @@ impl State {
         // Details and art for new games follow in the background; a running job is fine
         if new_matches || !summary.added.is_empty() {
             let _ = self.refresh_all_meta(false);
-            let _ = self.fetch_all_art(false);
+            let _ = self.fetch_all_art(false, false);
         }
         let ids = summary.ids();
         if !ids.is_empty() {
@@ -436,7 +436,7 @@ impl State {
     }
 }
 
-fn art_kind(params: &Value) -> Result<&str, Error> {
+fn art_kind(params: &Value) -> Result<&'static str, Error> {
     let kind = str_param(params, "kind")?;
     crate::meta::art::KINDS.into_iter().find(|k| *k == kind).ok_or_else(|| Error::new("bad_params", format!("no art kind {kind}")))
 }

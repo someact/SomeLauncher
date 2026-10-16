@@ -46,6 +46,9 @@ async fn main() -> Result<()> {
     if let Err(e) = state.recover().await {
         tracing::error!("recovering sessions: {e:#}");
     }
+    if let Err(e) = state.check_screen().await {
+        tracing::warn!("checking the screen size: {e:#}");
+    }
     let result = server::serve(listener, state).await;
     let _ = std::fs::remove_file(&socket);
     tracing::info!("stopped");
