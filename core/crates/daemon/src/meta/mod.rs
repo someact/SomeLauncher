@@ -3,6 +3,7 @@
 //! except Steam's own games, which match themselves by app id.
 
 pub mod art;
+mod builds;
 mod fetch;
 pub mod sgdb;
 pub mod steam_store;

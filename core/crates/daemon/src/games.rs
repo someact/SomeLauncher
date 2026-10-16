@@ -2,11 +2,11 @@
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, Row, params};
-use somelauncher_proto::game::{Game, Kind, Meta, NewGame, Source, SourceKind};
+use somelauncher_proto::game::{Build, Game, Kind, Meta, NewGame, Source, SourceKind};
 use std::path::PathBuf;
 
 const COLUMNS: &str =
-    "id, name, kind, install_dir, exe, prefix, runner, tags, categories, favorite, hidden, playtime, last_played, added";
+    "id, name, kind, install_dir, exe, prefix, runner, tags, categories, favorite, hidden, playtime, last_played, added, build";
 
 pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
@@ -43,7 +43,26 @@ fn from_row(row: &Row) -> rusqlite::Result<Game> {
         sources: Vec::new(),
         meta: None,
         art: Default::default(),
+        build: json(row, 14)?,
     })
+}
+
+/// What `build` works out from the sources: the installed Steam build, and
+/// whether a newer one is out (or Steam itself has an update waiting).
+fn fill_build(g: &mut Game) {
+    let steam = g.sources.iter().find(|s| s.source == SourceKind::Steam);
+    let installed = steam.filter(|s| s.data["installed"] == true).and_then(|s| s.data["buildid"].as_str()).filter(|b| !b.is_empty() && *b != "0");
+    g.build.installed = installed.map(String::from);
+    // StateFlags bit 2: update required
+    let steam_says = steam.is_some_and(|s| s.data["installed"] == true && s.data["stateFlags"].as_i64().unwrap_or(0) & 2 != 0);
+    let newer = matches!((&g.build.installed, &g.build.latest), (Some(i), Some(l)) if i != l);
+    g.build.update_available = steam_says || newer;
+}
+
+/// The stored part of a build.
+fn stored_build(b: &Build) -> String {
+    let stored = Build { installed: None, update_available: false, ..b.clone() };
+    serde_json::to_string(&stored).unwrap_or_else(|_| "{}".into())
 }
 
 fn meta(conn: &Connection, id: i64) -> Result<Option<Meta>> {
@@ -83,6 +102,7 @@ pub fn get(conn: &Connection, id: i64) -> Result<Option<Game>> {
     game.sources = sources(conn, id)?;
     game.meta = meta(conn, id)?;
     game.art = crate::meta::art::of(conn, id)?;
+    fill_build(&mut game);
     Ok(Some(game))
 }
 
@@ -96,6 +116,7 @@ pub fn list(conn: &Connection, include_hidden: bool) -> Result<Vec<Game>> {
         g.sources = sources(conn, g.id)?;
         g.meta = meta(conn, g.id)?;
         g.art = crate::meta::art::of(conn, g.id)?;
+        fill_build(g);
     }
     Ok(games)
 }
@@ -125,7 +146,7 @@ pub fn insert(conn: &Connection, g: &NewGame) -> Result<i64> {
 pub fn save(conn: &Connection, g: &Game) -> Result<()> {
     let n = conn.execute(
         "UPDATE games SET name = ?2, kind = ?3, install_dir = ?4, exe = ?5, prefix = ?6, runner = ?7,
-         tags = ?8, categories = ?9, favorite = ?10, hidden = ?11 WHERE id = ?1",
+         tags = ?8, categories = ?9, favorite = ?10, hidden = ?11, build = ?12 WHERE id = ?1",
         params![
             g.id,
             g.name,
@@ -138,6 +159,7 @@ pub fn save(conn: &Connection, g: &Game) -> Result<()> {
             serde_json::to_string(&g.categories)?,
             g.favorite,
             g.hidden,
+            stored_build(&g.build),
         ],
     )?;
     anyhow::ensure!(n == 1, "no game {}", g.id);
@@ -312,6 +334,30 @@ mod tests {
         assert!(get(&conn, b).unwrap().is_none());
         assert!(duplicates(&conn).unwrap().is_empty());
         assert!(merge(&conn, a, a).is_err());
+    }
+
+    #[test]
+    fn builds_compare_the_installed_steam_build_with_the_latest() {
+        let conn = test_db();
+        let id = insert(&conn, &NewGame::new("R.E.P.O.", Kind::Steam)).unwrap();
+        let src = |build: &str, flags: i64| Source {
+            source: SourceKind::Steam,
+            source_id: "3241660".into(),
+            data: json!({ "installed": true, "buildid": build, "stateFlags": flags }),
+        };
+        set_source(&conn, id, &src("100", 4)).unwrap();
+        let mut g = get(&conn, id).unwrap().unwrap();
+        assert_eq!((g.build.installed.as_deref(), g.build.update_available), (Some("100"), false));
+        g.build.latest = Some("101".into());
+        g.build.recorded = Some("v1".into());
+        save(&conn, &g).unwrap();
+        let g = get(&conn, id).unwrap().unwrap();
+        assert!(g.build.update_available);
+        assert_eq!(g.build.recorded.as_deref(), Some("v1"));
+        set_source(&conn, id, &src("101", 4)).unwrap();
+        assert!(!get(&conn, id).unwrap().unwrap().build.update_available);
+        set_source(&conn, id, &src("101", 6)).unwrap();
+        assert!(get(&conn, id).unwrap().unwrap().build.update_available, "Steam has an update waiting");
     }
 
     #[test]

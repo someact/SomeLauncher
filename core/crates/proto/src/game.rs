@@ -199,6 +199,32 @@ pub struct Game {
     /// Cached art files, sized for this screen
     #[serde(default)]
     pub art: Art,
+    #[serde(default)]
+    pub build: Build,
+}
+
+/// Which build of the game is installed and whether a newer one is out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Build {
+    /// What the user noted (games that are not from Steam: `v6.7.0`, a release date)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded: Option<String>,
+    /// The latest public build (Steam games)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest: Option<String>,
+    /// Unix seconds of the latest build
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_time: Option<i64>,
+    /// Unix seconds of the last check
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<i64>,
+    /// The installed build (Steam's manifest); worked out on load, not stored
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<String>,
+    /// Worked out on load, not stored
+    #[serde(default)]
+    pub update_available: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -272,6 +298,7 @@ impl Game {
             sources: Vec::new(),
             meta: None,
             art: Art::default(),
+            build: Build::default(),
         }
     }
 }
@@ -332,6 +359,9 @@ pub struct GamePatch {
     pub prefix: Option<Option<PathBuf>>,
     pub runner: Option<Runner>,
     pub categories: Option<Vec<String>>,
+    /// The build the user notes; `null` clears it
+    #[serde(default, deserialize_with = "present")]
+    pub recorded_build: Option<Option<String>>,
     pub favorite: Option<bool>,
     pub hidden: Option<bool>,
 }
@@ -363,6 +393,9 @@ impl GamePatch {
         }
         if let Some(v) = self.categories {
             g.categories = v;
+        }
+        if let Some(v) = self.recorded_build {
+            g.build.recorded = v.filter(|b| !b.trim().is_empty());
         }
         if let Some(v) = self.favorite {
             g.favorite = v;

@@ -81,12 +81,12 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 2g. Session: systemd scope, playtime saved even after a crash, a stop button (kills the scope), last 3 logs per game
 - [~] 2h. CLI `somelauncher play|list|stop` and `.desktop` entries per game (optional) — the CLI's no-daemon fallback starts the daemon (as the UI does) instead of launching games itself, so launching has one code path
 
-## Phase 3: Metadata and artwork
+## Phase 3: Metadata and artwork ✅
 - [x] 3a. Match by name (SteamGridDB search + Steam store search), show the top results with covers, and the user confirms or picks another (Lutris-style)
 - [x] 3b. Art set per game: hero, grid (portrait), logo, icon; the user can replace any image with a local file
 - [x] 3c. Auto tags and categories from Steam genres and tags (+ our own: `co-op`, `needs steam`, `gacha`, `modded`)
 - [x] 3d. Image cache sized for the screen (as SomeShell does with wallpapers) so Qt never holds a 4K decode
-- [ ] 3e. Build check: Steam `buildid` against the latest public one; a badge when an update is out
+- [x] 3e. Build check: Steam `buildid` against the latest public one; a badge when an update is out
 
 ## Phase 4: Core UI
 - [ ] 4a. Home: "Continue playing" (last played), favorites, the Hoyo games' update state; games not played for 30 days drop off Home (configurable) but stay in Library

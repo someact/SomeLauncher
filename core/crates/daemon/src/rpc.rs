@@ -227,6 +227,15 @@ impl State {
                     None => Ok(json!({ "id": self.refresh_all_meta(force).map_err(|e| Error::new("busy", format!("{e:#}")))? })),
                 }
             }
+            "builds.check" => match params.get("id") {
+                Some(_) => {
+                    let id = id_param(params)?;
+                    self.game(&self.db.lock().unwrap(), id)?;
+                    self.check_build(id).await.map_err(|e| Error::new("network", format!("{e:#}")))?;
+                    to_json(self.game(&self.db.lock().unwrap(), id)?)
+                }
+                None => Ok(json!({ "id": self.check_all_builds().map_err(|e| Error::new("busy", format!("{e:#}")))? })),
+            },
             "art.fetch" => match params.get("id") {
                 Some(_) => {
                     let id = id_param(params)?;
@@ -339,6 +348,7 @@ impl State {
         if new_matches || !summary.added.is_empty() {
             let _ = self.refresh_all_meta(false);
             let _ = self.fetch_all_art(false, false);
+            let _ = self.check_all_builds();
         }
         let ids = summary.ids();
         if !ids.is_empty() {

@@ -58,6 +58,8 @@ const MIGRATIONS: &[&str] = &[
         file TEXT,
         PRIMARY KEY (game_id, kind)
     );",
+    // 7: build info (proto::game::Build as JSON, without what is worked out on load)
+    "ALTER TABLE games ADD COLUMN build TEXT NOT NULL DEFAULT '{}';",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

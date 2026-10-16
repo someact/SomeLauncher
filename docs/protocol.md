@@ -53,7 +53,7 @@ On connect the daemon first sends `hello`:
 | `games.list` | `{includeHidden?}` | every game (below), by name; hidden ones only with `includeHidden: true` |
 | `games.get` | `{id}` | the game |
 | `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
-| `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
+| `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner categories recordedBuild favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
 | `games.plan` | `{id}` | what launching would run, without running it: `{argv, env, cwd, newPrefix?, preLaunch?, postExit?}` (`env` is only what we add to the daemon's) |
 | `games.launch` | `{id}` | `{unit, log}` once the game is started in its own systemd scope. Errors: `launch_failed` (why, e.g. no Proton or umu-run), `busy` (already running). Emits `game.state` |
@@ -68,6 +68,7 @@ On connect the daemon first sends `hello`:
 | `meta.match` | `{id, source, sourceId}`: a candidate | the game with its `meta` set. The other source's id is filled in when found (a Steam app's SteamGridDB id, a SteamGridDB game's Steam app by its exact name). Emits `library.changed` |
 | `meta.unmatch` | `{id}` | `null`; the game has no match again |
 | `meta.refresh` | `{id?, force?}` | with `id`: the game, its store details and tags fetched (when missing, or again with `force`); without: `{id}` of a background job for every matched game (a request a second, SteamSpy's limit) |
+| `builds.check` | `{id?}` | with `id`: the game, its latest build looked up; without: `{id}` of a background job for every installed Steam game. Also done when the daemon starts (unless the last check is under 12 hours old) and after an import that added games |
 | `art.fetch` | `{id?, force?}` | with `id`: the game, its art brought up to date (`force` looks for better automatic art too); without: `{id}` of a background job doing every game (`download.*` events, `done`/`total` in games). Art the user chose is never replaced |
 | `art.set` | `{id, kind, origin?}`: `kind` is `hero`, `grid`, `logo` or `icon`; `origin` a file or URL | the game with that art; without `origin` the kind goes back to automatic |
 | `art.options` | `{id, kind}` | the automatic origins for that kind, best first, to pick another with `art.set` |
@@ -109,6 +110,7 @@ On connect the daemon first sends `hello`:
 - `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Each is sized for this machine so Qt never holds a 4K decode: heroes at most the widest connected monitor's width (from `/sys/class/drm`), grids 600x900, logos 1280x640, icons 256x256, never enlarged; JPEG, or PNG when transparent. When the widest monitor changes, the next daemon start makes them all again from their origins. Automatic art comes, best first, from SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
 - `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import. After an import, details and art for new games are fetched by background jobs. A match brings, in the background, `description`, `genres`, `features` (Steam's feature list), `steamTags` (Steam's user tags from SteamSpy), `developers`, `publishers`, `release`, and `categories`: the automatic library rows (`Co-op` for co-op games, then the main genre).
 - `tags`: automatic, recomputed whenever what they come from changes: `co-op`, `multiplayer`, `needs steam` (runner), `gacha` (hoyo), `modded` (XXMI on, or a Minecraft mod loader), the genres and Steam's top 6 user tags; lowercase.
+- `build`: `{recorded?, latest?, latestTime?, checked?, installed?, updateAvailable}`. Steam games: `installed` is the build in Steam's manifest, `latest` the latest public build (api.steamcmd.net, a mirror of Steam's PICS), and `updateAvailable` is true when they differ or Steam itself has an update waiting. Other games: `recorded` is the build the user notes (`recordedBuild` in `games.update`).
 - `categories`: the user's library rows; while empty the library uses `meta.categories`.
 - `sources`: where the game was imported from (`steam`, `lutris`, `twintail`, `prism`, `manual`), with what that source said in `data`. A merged game (the same game from two sources) has several.
 
@@ -126,6 +128,7 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `prefixDir` | where new wine prefixes go (`<prefixDir>/<game name>`); `Prefixes` in the first `gameDirs` folder when unset |
 | `umuRun` | the umu-run to use; else `umu-run` on PATH, else the copy Lutris ships |
 | `artScreenWidth` | the screen width art was last sized for (the daemon keeps it) |
+| `buildsChecked` | when the last update check ran (the daemon keeps it) |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching

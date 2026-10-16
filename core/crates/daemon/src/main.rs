@@ -49,6 +49,9 @@ async fn main() -> Result<()> {
     if let Err(e) = state.check_screen().await {
         tracing::warn!("checking the screen size: {e:#}");
     }
+    if let Err(e) = state.check_builds_if_stale() {
+        tracing::warn!("checking for updates: {e:#}");
+    }
     let result = server::serve(listener, state).await;
     let _ = std::fs::remove_file(&socket);
     tracing::info!("stopped");
