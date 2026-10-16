@@ -54,9 +54,10 @@ somelauncher  (Rust CLI on the same socket: `somelauncher play <id>`, desktop en
 - Without the daemon, the CLI can launch one game itself (fallback, like SomeShell's CLI fallback).
 
 ## Phase 0: Foundations
-- [ ] 0a. `git init`, `.gitignore`, layout: `core/` (Rust workspace: `somelauncherd`, `somelauncher` CLI, shared `proto` crate), `ui/` (Quickshell config), `docs/`, `install.sh`
-- [ ] 0b. Protocol: request/response + events (`library.changed`, `game.state`, `download.progress`), versioned, documented in `docs/protocol.md`
-- [ ] 0c. Daemon skeleton: socket, sqlite + migrations, config, logging to `~/.local/state/somelauncher/`
+Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests point `SOMELAUNCHER_SOCKET` at a short path.
+- [x] 0a. `git init`, `.gitignore`, layout: `core/` (Rust workspace: `somelauncherd`, `somelauncher` CLI, shared `proto` crate), `ui/` (Quickshell config), `docs/`, `install.sh`
+- [x] 0b. Protocol: request/response + events (`library.changed`, `game.state`, `download.progress`), versioned, documented in `docs/protocol.md`
+- [x] 0c. Daemon skeleton: socket, sqlite + migrations, config, logging to `~/.local/state/somelauncher/`
 - [ ] 0d. UI skeleton: window, left nav (logo slot left empty, Home, Online, Library, Minecraft, Settings), socket client singleton, reconnect
 - [ ] 0e. Design system: Theme (SomeShell's matugen colors when present, else our own matugen template or defaults), Glass, springs, buttons and cards. Copy the needed SomeShell components rather than importing them; note the source commit
 - [ ] 0f. Dev commands documented in CLAUDE.md (build, run the daemon in the foreground, run the UI from the repo, tests)
@@ -73,7 +74,7 @@ somelauncher  (Rust CLI on the same socket: `somelauncher play <id>`, desktop en
 ## Phase 2: Runners and launch
 - [ ] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings
 - [ ] 2b. umu-run runner: prefix per game (default `<games>/Prefixes/<name>`), `GAMEID`/`UMU_ID`, env, args, DLL overrides, working dir, pre/post scripts
-- [ ] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test with How to Fish (files to be found again)
+- [ ] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test game: How to Fish (`<games>/How to Fish`, OnlineFix)
 - [ ] 2d. Steam runner: `steam -applaunch <id> <args>`, detect start and exit through the reaper process
 - [ ] 2e. Native runner (Linux executables, scripts)
 - [ ] 2f. Wrappers per game with global defaults: gamescope (size, refresh, FSR, HDR), MangoHud, gamemoderun, PRIME offload on hybrid GPUs
@@ -115,7 +116,7 @@ somelauncher  (Rust CLI on the same socket: `somelauncher play <id>`, desktop en
 
 ## Phase 7: Achievements
 - [ ] 7a. Steam Web API: schema (names, icons) + player achievements for owned Steam games
-- [ ] 7b. gbe_fork/Goldberg: read `GSE Saves/<appid>/achievements.json` (and the older Goldberg path) inside the prefix, names and icons from the Steam schema
+- [ ] 7b. gbe_fork/Goldberg: unlocks from `GSE Saves/<appid>/achievements.json` (and the older Goldberg path) inside the prefix, or the game's local save when configured; names and icons from the game's own `steam_settings/achievements.json` + `achievement_images/`, the Steam schema only as a fallback. Test game: Muse Dash (gbe_fork experimental loader, `steamclient_loader` ini)
 - [ ] 7c. Progress on the game page and in the library card; a list with locked/unlocked and unlock time
 
 ## Phase 8: Minecraft (Prism backend)
