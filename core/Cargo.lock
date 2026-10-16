@@ -1084,6 +1084,7 @@ dependencies = [
  "futures-util",
  "hex",
  "inotify",
+ "libc",
  "reqwest",
  "rusqlite",
  "serde",

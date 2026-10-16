@@ -5,13 +5,10 @@
 //! fail inside pressure-vessel) of Steam's Windows DLLs; the game folder needs
 //! `steam_appid.txt`; the loader DLLs need `n,b` overrides.
 
-use crate::import::{steam, vdf};
-use crate::watch;
+use crate::import::steam;
 use anyhow::{Context, Result, bail};
-use inotify::WatchMask;
 use somelauncher_proto::game::Game;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 /// DLL overrides set to `n,b` unless the game sets them itself.
 pub const OVERRIDES: &[&str] = &["winmm", "OnlineFix64", "SteamOverlay64", "StubDRM64", "steam_api64"];
@@ -25,8 +22,6 @@ const FILES: &[(&str, &[&str])] = &[
     ("steam.exe", &["legacycompat/SteamService.exe"]),
 ];
 
-const LOGIN_TIMEOUT: Duration = Duration::from_secs(180);
-
 /// The app id for `steam_appid.txt`: the game's setting, else OnlineFix's fake id, else Spacewar (480).
 pub fn app_id(game: &Game) -> String {
     if let Some(id) = game.runner.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
@@ -36,62 +31,6 @@ pub fn app_id(game: &Game) -> String {
     ini.and_then(|t| t.lines().find_map(|l| l.trim().strip_prefix("FakeAppId=").map(|v| v.trim().to_string())))
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "480".into())
-}
-
-fn registry(home: &Path) -> Option<PathBuf> {
-    [".steam/registry.vdf", ".var/app/com.valvesoftware.Steam/.steam/registry.vdf"].iter().map(|p| home.join(p)).find(|p| p.is_file())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Status {
-    pub running: bool,
-    pub logged_in: bool,
-}
-
-/// From `registry.vdf`, which Steam rewrites when it starts, logs in and quits.
-pub fn status(home: &Path) -> Status {
-    let Some(v) = registry(home).and_then(|p| vdf::parse(&std::fs::read_to_string(p).ok()?).ok()) else {
-        return Status { running: false, logged_in: false };
-    };
-    let pid = v.str_at(&["Registry", "HKLM", "Software", "Valve", "Steam", "SteamPID"]).and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
-    let running = pid != 0 && Path::new(&format!("/proc/{pid}")).exists();
-    let user = v.str_at(&["Registry", "HKCU", "Software", "Valve", "Steam", "ActiveProcess", "ActiveUser"]).unwrap_or("0");
-    Status { running, logged_in: running && user != "0" && !user.is_empty() }
-}
-
-/// Starts Steam in its own scope (it outlives the game and the daemon).
-fn start(home: &Path) -> Result<()> {
-    let flatpak = home.join(".var/app/com.valvesoftware.Steam").is_dir();
-    let steam: Vec<&str> = match crate::launch::which("steam") {
-        Some(_) => vec!["steam", "-silent"],
-        None if flatpak => vec!["flatpak", "run", "com.valvesoftware.Steam", "-silent"],
-        None => bail!("Steam is not installed"),
-    };
-    let unit = format!("--unit=somelauncher-steam-{}", crate::games::now());
-    let mut cmd = tokio::process::Command::new("systemd-run");
-    cmd.args(["--user", "--scope", "--collect", "--quiet", &unit, "--"]).args(&steam);
-    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    // Not waited for: systemd-run stays Steam's parent until Steam quits, and tokio reaps it then
-    cmd.spawn().context("starting Steam")?;
-    Ok(())
-}
-
-/// Makes sure Steam runs and is logged in, starting it when needed.
-pub async fn ensure_running(home: &Path) -> Result<()> {
-    if status(home).logged_in {
-        return Ok(());
-    }
-    if !status(home).running {
-        tracing::info!("starting Steam for a Needs Steam game");
-        start(home)?;
-    }
-    let dir = registry(home).and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(|| home.join(".steam"));
-    std::fs::create_dir_all(&dir)?;
-    let mask = WatchMask::CLOSE_WRITE | WatchMask::MOVED_TO | WatchMask::CREATE;
-    if !watch::until(&dir, mask, Some(LOGIN_TIMEOUT), || status(home).logged_in).await? {
-        bail!("Steam did not log in within {} seconds", LOGIN_TIMEOUT.as_secs());
-    }
-    Ok(())
 }
 
 /// Copies Steam's Windows files into the prefix. A symlink or a file of another
@@ -198,23 +137,5 @@ mod tests {
         g.runner.steam_app_id = Some("1".into());
         write_app_id(&g).unwrap();
         assert_eq!(std::fs::read_to_string(t.path().join("steam_appid.txt")).unwrap(), "999", "an existing file is kept");
-    }
-
-    #[test]
-    fn status_reads_the_registry() {
-        let home = tempfile::tempdir().unwrap();
-        assert_eq!(status(home.path()), Status { running: false, logged_in: false });
-        std::fs::create_dir_all(home.path().join(".steam")).unwrap();
-        let reg = |pid: u32, user: &str| {
-            format!(
-                r#""Registry" {{ "HKLM" {{ "Software" {{ "Valve" {{ "Steam" {{ "SteamPID" "{pid}" }} }} }} }}
-                   "HKCU" {{ "Software" {{ "Valve" {{ "Steam" {{ "ActiveProcess" {{ "ActiveUser" "{user}" }} }} }} }} }} }}"#
-            )
-        };
-        let me = std::process::id();
-        std::fs::write(home.path().join(".steam/registry.vdf"), reg(me, "0")).unwrap();
-        assert_eq!(status(home.path()), Status { running: true, logged_in: false });
-        std::fs::write(home.path().join(".steam/registry.vdf"), reg(me, "1561564557")).unwrap();
-        assert!(status(home.path()).logged_in);
     }
 }

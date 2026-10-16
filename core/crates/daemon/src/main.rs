@@ -12,6 +12,7 @@ mod needs_steam;
 mod proton;
 mod rpc;
 mod server;
+mod steam_client;
 mod watch;
 
 use anyhow::{Context, Result};

@@ -108,7 +108,14 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
             let runnable = std::fs::metadata(exe).is_ok_and(|m| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0);
             if is_script && !runnable { vec!["sh".into(), path_str(exe)] } else { vec![path_str(exe)] }
         }
-        Kind::Steam => bail!("Steam games are launched through Steam (Phase 2d)"),
+        Kind::Steam => {
+            let (appid, flatpak) = steam_app(game).ok_or_else(|| anyhow!("{} has no Steam app id", game.name))?;
+            let mut argv: Vec<String> = if flatpak { vec!["flatpak".into(), "run".into(), "com.valvesoftware.Steam".into()] } else { vec!["steam".into()] };
+            argv.extend(["-applaunch".into(), appid]);
+            argv.extend(r.args.iter().cloned());
+            // Steam starts the game itself, with its own Proton and launch options
+            return Ok(Plan { argv, env, cwd: None, new_prefix: None, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() });
+        }
         Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 2e)"),
     };
     argv.extend(r.args.iter().cloned());
@@ -126,6 +133,12 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
     }
     let cwd = r.working_dir.clone().or_else(|| game.exe.as_ref().and_then(|e| e.parent().map(Path::to_path_buf)));
     Ok(Plan { argv, env, cwd, new_prefix, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() })
+}
+
+/// A Steam game's app id and whether it belongs to flatpak Steam.
+pub fn steam_app(game: &Game) -> Option<(String, bool)> {
+    let s = game.sources.iter().find(|s| s.source == somelauncher_proto::game::SourceKind::Steam)?;
+    Some((s.source_id.clone(), s.data["flatpak"].as_bool().unwrap_or(false)))
 }
 
 /// The systemd unit a game's scope gets.
@@ -259,6 +272,21 @@ mod tests {
         let p = plan(&g, &ctx()).unwrap();
         assert_eq!(p.env["UMU_USE_STEAM"], "1");
         assert_eq!(p.env["WINEDLLOVERRIDES"], "winmm=n;OnlineFix64=n,b;SteamOverlay64=n,b;StubDRM64=n,b;steam_api64=n,b");
+    }
+
+    #[test]
+    fn steam_games_run_through_steam() {
+        let mut g = game(Kind::Steam);
+        assert!(plan(&g, &ctx()).is_err(), "no app id");
+        g.sources.push(somelauncher_proto::game::Source {
+            source: somelauncher_proto::game::SourceKind::Steam,
+            source_id: "3241660".into(),
+            data: serde_json::json!({ "flatpak": false }),
+        });
+        g.runner.args = vec!["-nolog".into()];
+        let p = plan(&g, &ctx()).unwrap();
+        assert_eq!(p.argv, ["steam", "-applaunch", "3241660", "-nolog"]);
+        assert!(p.env.is_empty() && p.cwd.is_none());
     }
 
     #[test]

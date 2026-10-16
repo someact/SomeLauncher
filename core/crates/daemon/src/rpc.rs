@@ -1,7 +1,7 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import, launch, needs_steam, proton};
+use crate::{games, import, launch, needs_steam, proton, steam_client};
 use anyhow::Context as _;
 use rusqlite::Connection;
 use serde_json::{Value, json};
@@ -316,6 +316,9 @@ impl State {
             return Err(Error::new("busy", format!("{} is already running", game.name)));
         }
         let plan = launch::plan(&game, &self.launch_context().map_err(internal)?).map_err(failed)?;
+        if game.kind == Kind::Steam {
+            return self.launch_steam(game, plan).await;
+        }
         if let Some(prefix) = &plan.new_prefix {
             std::fs::create_dir_all(prefix).map_err(|e| failed(anyhow::anyhow!("creating {}: {e}", prefix.display())))?;
             game.prefix = Some(prefix.clone());
@@ -353,11 +356,56 @@ impl State {
         Ok(json!({ "unit": unit, "log": log_path }))
     }
 
+    /// A Steam game: `steam -applaunch`, then followed from Steam's process log
+    /// (start) to its reaper process (exit). Steam owns the launch, so no scope or log of ours.
+    async fn launch_steam(self: &Arc<Self>, game: Game, plan: launch::Plan) -> Result<Value, Error> {
+        let failed = |e: anyhow::Error| Error::new("launch_failed", format!("{e:#}"));
+        let id = game.id;
+        let (appid, flatpak) = launch::steam_app(&game).ok_or_else(|| failed(anyhow::anyhow!("no Steam app id")))?;
+        if steam_client::find_reaper(&appid).is_some() {
+            return Err(Error::new("busy", format!("{} is already running in Steam", game.name)));
+        }
+        let root = import::steam::roots(&self.home)
+            .into_iter()
+            .find(|r| r.to_string_lossy().contains("com.valvesoftware.Steam") == flatpak)
+            .ok_or_else(|| failed(anyhow::anyhow!("Steam is not installed")))?;
+        let offset = steam_client::log_offset(&steam_client::process_log(&root));
+        let skip = if flatpak { 3 } else { 1 };
+        steam_client::run(&self.home, flatpak, &plan.argv[skip..]).map_err(failed)?;
+        let unit = format!("steam:{appid}");
+        self.running.lock().unwrap().insert(id, unit.clone());
+        self.emit("game.state", json!({ "id": id, "state": "starting", "step": "steam" }));
+        tracing::info!(id, appid, "asked Steam to start {}", game.name);
+
+        let state = self.clone();
+        tokio::spawn(async move {
+            let result = async {
+                let reaper = steam_client::wait_started(&root, &appid, offset).await?;
+                state.emit("game.state", json!({ "id": id, "state": "running", "unit": format!("steam:{appid}") }));
+                tracing::info!(id, reaper, "{} is running", game.name);
+                steam_client::wait_pid(reaper).await
+            }
+            .await;
+            state.running.lock().unwrap().remove(&id);
+            match result {
+                Ok(()) => {
+                    tracing::info!(id, "{} exited", game.name);
+                    state.emit("game.state", json!({ "id": id, "state": "stopped" }));
+                }
+                Err(e) => {
+                    tracing::warn!(id, "{}: {e:#}", game.name);
+                    state.emit("game.state", json!({ "id": id, "state": "stopped", "error": format!("{e:#}") }));
+                }
+            }
+        });
+        Ok(json!({ "unit": unit }))
+    }
+
     /// LUTRIS_SETUP.md, automated: Steam running and logged in, its DLLs in the prefix, `steam_appid.txt`.
     async fn prepare_needs_steam(&self, game: &Game, plan: &launch::Plan) -> anyhow::Result<()> {
-        if !needs_steam::status(&self.home).logged_in {
+        if !steam_client::status(&self.home).logged_in {
             self.emit("game.state", json!({ "id": game.id, "state": "starting", "step": "steam" }));
-            needs_steam::ensure_running(&self.home).await?;
+            steam_client::ensure_running(&self.home).await?;
         }
         let prefix = plan.env.get("WINEPREFIX").map(PathBuf::from).context("the plan has no prefix")?;
         let copied = needs_steam::prepare_prefix(&needs_steam::steam_root(&self.home)?, &prefix)?;
