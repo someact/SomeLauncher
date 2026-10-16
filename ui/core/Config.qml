@@ -14,6 +14,7 @@ Singleton {
     readonly property alias glass: adapter.glass
     readonly property alias motion: adapter.motion
     readonly property alias ui: adapter.ui
+    readonly property alias home: adapter.home
     property bool ready: false
 
     FileView {
@@ -53,6 +54,9 @@ Singleton {
             }
             property JsonObject ui: JsonObject {
                 property string page: "home"       // the page shown at start (the last one open)
+            }
+            property JsonObject home: JsonObject {
+                property int recentDays: 30        // games not played for this long drop off Home (0: never); Library keeps them
             }
         }
     }

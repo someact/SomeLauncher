@@ -89,7 +89,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 3e. Build check: Steam `buildid` against the latest public one; a badge when an update is out
 
 ## Phase 4: Core UI
-- [ ] 4a. Home: "Continue playing" (last played), favorites, the Hoyo games' update state; games not played for 30 days drop off Home (configurable) but stay in Library
+- [~] 4a. Home: "Continue playing" (last played), favorites, the Hoyo games' update state; games not played for 30 days drop off Home (configurable) but stay in Library — a banner for the last played game (a click on a card shows that one, a double click plays), `home.recentDays` in config.json; favorites never drop off; the Hoyo cards show the installed version and `build.updateAvailable`, which the Hoyo update check (6e) fills
 - [ ] 4b. Library (Netflix layout): a hero row for recent/favorite, a row per category, a Steam badge on Steam and Needs-Steam games, search and filter
 - [ ] 4c. Game page (PS5 layout): full hero art, logo, a big Play button, a settings button, playtime, last played, achievement progress, build/update badge; the shared element moves from card to page
 - [ ] 4d. Game settings sheet: Simple (runner, Proton, Needs Steam, gamescope, MangoHud) and Advanced (env, args, DLL overrides, prefix, scripts, logs). Nothing more than one click deep for the common options
