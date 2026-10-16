@@ -32,14 +32,16 @@ impl State {
         let Some(game) = crate::games::get(&self.db.lock().unwrap(), id)? else { return Ok(()) };
         let Some(appid) = crate::launch::steam_app(&game).map(|a| a.0) else { return Ok(()) };
         let found = latest(&self.http, &appid).await?;
-        // The game may have changed meanwhile: write only the build
-        let Some(mut game) = crate::games::get(&self.db.lock().unwrap(), id)? else { return Ok(()) };
+        // The game may have changed during the request: read it again and write it under one lock
+        let db = self.db.lock().unwrap();
+        let Some(mut game) = crate::games::get(&db, id)? else { return Ok(()) };
         let before = game.build.clone();
         game.build.checked = Some(crate::games::now());
         if let Some((build, time)) = found {
             (game.build.latest, game.build.latest_time) = (Some(build), Some(time));
         }
-        crate::games::save(&self.db.lock().unwrap(), &game)?;
+        crate::games::save(&db, &game)?;
+        drop(db);
         if game.build.latest != before.latest {
             self.emit("library.changed", json!({ "ids": [id] }));
         }
