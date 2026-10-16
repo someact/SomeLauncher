@@ -3,6 +3,7 @@
 //! with JSON lines (docs/protocol.md). Closing a client never stops its work.
 
 mod db;
+mod desktop;
 mod games;
 mod gpu;
 mod guess;

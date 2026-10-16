@@ -93,6 +93,10 @@ pub mod paths {
     pub fn state_dir() -> PathBuf {
         xdg("XDG_STATE_HOME", ".local/state").join("somelauncher")
     }
+    /// Where desktop entries go (`$XDG_DATA_HOME/applications`)
+    pub fn applications_dir() -> PathBuf {
+        xdg("XDG_DATA_HOME", ".local/share").join("applications")
+    }
     pub fn cache_dir() -> PathBuf {
         xdg("XDG_CACHE_HOME", ".cache").join("somelauncher")
     }

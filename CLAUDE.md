@@ -14,7 +14,7 @@ scripts/dev.sh test             # cargo tests; one test: scripts/dev.sh test -p 
 scripts/dev.sh daemon           # somelauncherd in the foreground, debug log on the terminal
 scripts/dev.sh ui [page]        # the UI from ui/ against the debug daemon (home online library minecraft settings)
 scripts/dev.sh check [secs]     # load the UI and print QML warnings/errors; must print nothing
-core/target/debug/somelauncher status | call <method> '<json>'   # talk to the running daemon
+core/target/debug/somelauncher list | play <game> | stop <game> | status | call <method> '<json>'   # talk to the daemon (started when not running)
 ```
 - The UI starts the daemon itself when nobody answers on the socket (`SOMELAUNCHER_DAEMON`, set by dev.sh, else `somelauncherd` on PATH), and starts it again once per outage. A running daemon from an older build keeps answering: `somelauncher call shutdown` before testing daemon changes through the UI.
 - Isolated runs: point `XDG_DATA_HOME`/`XDG_STATE_HOME`/`XDG_CONFIG_HOME` at a temp dir and `SOMELAUNCHER_SOCKET` at a short path (unix socket paths max 107 bytes, the scratchpad is too long).

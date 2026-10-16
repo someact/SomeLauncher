@@ -51,7 +51,7 @@ somelauncher  (Rust CLI on the same socket: `somelauncher play <id>`, desktop en
 
 - Config: `~/.config/somelauncher/config.json` (UI and global defaults). Per-game settings live in the db and can be exported as TOML.
 - Each game runs in its own `systemd-run --user --scope`, so Proton's whole process tree is tracked and playtime ends when the scope is empty. Steam games are tracked through Steam's `reaper SteamLaunch AppId=<id>` process.
-- Without the daemon, the CLI can launch one game itself (fallback, like SomeShell's CLI fallback).
+- Without the daemon, the CLI starts it (as the UI does), so `somelauncher play` and desktop entries always work.
 
 ## Phase 0: Foundations ✅
 Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests point `SOMELAUNCHER_SOCKET` at a short path.
@@ -71,7 +71,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [~] 1f. Manual add: pick an exe or folder, guess the name from the folder, then confirm art (3a) and runner; a library scan for new folders under chosen game dirs — daemon side: `games.guess` (name, folder, main exe, kind) + `games.add`, and `library.scan`; the wizard itself is 4e and art confirmation 3a
 - [~] 1g. Duplicates (the same game from two sources) are merged, keeping one entry — automatic when it is the same install (same exe, or same folder and kind); the same name from different installs (e.g. a Steam copy and a Lutris copy) is two real copies, so `games.duplicates` lists them and `games.merge` merges on the user's say
 
-## Phase 2: Runners and launch
+## Phase 2: Runners and launch ✅
 - [x] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings
 - [x] 2b. umu-run runner: prefix per game (default `<games>/Prefixes/<name>`), `GAMEID`/`UMU_ID`, env, args, DLL overrides, working dir, pre/post scripts
 - [x] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test game: How to Fish (`<games>/How to Fish`, OnlineFix)
@@ -79,7 +79,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 2e. Native runner (Linux executables, scripts)
 - [x] 2f. Wrappers per game with global defaults: gamescope (size, refresh, FSR, HDR), MangoHud, gamemoderun, PRIME offload on hybrid GPUs
 - [x] 2g. Session: systemd scope, playtime saved even after a crash, a stop button (kills the scope), last 3 logs per game
-- [ ] 2h. CLI `somelauncher play|list|stop` and `.desktop` entries per game (optional)
+- [~] 2h. CLI `somelauncher play|list|stop` and `.desktop` entries per game (optional) — the CLI's no-daemon fallback starts the daemon (as the UI does) instead of launching games itself, so launching has one code path
 
 ## Phase 3: Metadata and artwork
 - [ ] 3a. Match by name (SteamGridDB search + Steam store search), show the top results with covers, and the user confirms or picks another (Lutris-style)

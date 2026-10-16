@@ -1,12 +1,12 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import, launch, proton};
+use crate::{desktop, games, import, launch, proton};
 use anyhow::Context as _;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use somelauncher_proto::game::{Game, GamePatch, NewGame, Source, SourceKind};
-use somelauncher_proto::{Error, Event, PROTOCOL, Reply, Request};
+use somelauncher_proto::{Error, Event, PROTOCOL, Reply, Request, paths};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
@@ -117,6 +117,7 @@ impl State {
                 let mut game = self.game(&db, id)?;
                 patch.apply(&mut game);
                 games::save(&db, &game).map_err(internal)?;
+                desktop::refresh(&paths::applications_dir(), &game, &desktop::cli()).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
                 to_json(game)
             }
@@ -125,6 +126,7 @@ impl State {
                 if !games::remove(&self.db.lock().unwrap(), id).map_err(internal)? {
                     return Err(not_found(id));
                 }
+                desktop::remove(&paths::applications_dir(), id).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id], "removed": true }));
                 Ok(Value::Null)
             }
@@ -138,6 +140,7 @@ impl State {
                 self.game(&db, from)?;
                 self.game(&db, into)?;
                 let game = games::merge(&db, from, into).map_err(internal)?;
+                desktop::remove(&paths::applications_dir(), from).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [into] }));
                 self.emit("library.changed", json!({ "ids": [from], "removed": true }));
                 to_json(game)
@@ -154,6 +157,18 @@ impl State {
                 let id = id_param(params)?;
                 let logs = crate::session::logs(id).into_iter().map(|(path, time, size)| json!({ "path": path, "time": time, "size": size }));
                 Ok(Value::Array(logs.collect()))
+            }
+            "games.desktop" => {
+                let id = id_param(params)?;
+                let game = self.game(&self.db.lock().unwrap(), id)?;
+                let dir = paths::applications_dir();
+                match params.get("enabled").and_then(Value::as_bool) {
+                    Some(true) => drop(desktop::write(&dir, &game, &desktop::cli()).map_err(internal)?),
+                    Some(false) => desktop::remove(&dir, id).map_err(internal)?,
+                    None => {}
+                }
+                let file = desktop::path(&dir, id);
+                Ok(json!({ "enabled": file.exists(), "path": file }))
             }
             "games.duplicates" => to_json(games::duplicates(&self.db.lock().unwrap()).map_err(internal)?),
             "games.guess" => {

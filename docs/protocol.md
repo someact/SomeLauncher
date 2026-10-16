@@ -59,6 +59,7 @@ On connect the daemon first sends `hello`:
 | `games.stop` | `{id}` | `null`: SIGTERM to the game's whole process tree (its scope, or everything under a Steam game's reaper), SIGKILL 10 s later if it still runs. `not_running` when it is not |
 | `games.running` | — | running and starting games: `[{id, unit, since}]` (`since` is `null` while Steam has not started it yet); what a client that just connected needs |
 | `games.logs` | `{id}` | the game's last 3 logs, newest first: `[{path, time, size}]` |
+| `games.desktop` | `{id, enabled?}` | `{enabled, path}`; `enabled: true` writes `$XDG_DATA_HOME/applications/somelauncher-game-<id>.desktop` (`Exec=somelauncher play <id>`), `false` removes it, left out only reports. The entry follows renames and goes with the game |
 | `games.duplicates` | — | groups of games with the same name (ignoring case and punctuation) that are separate entries: copies from different installs, for the user to merge or keep |
 | `games.merge` | `{id, into}` | the merged game: `id`'s sources move to `into`, empty fields are filled, tags and categories joined, playtimes added; `id` is deleted. Emits `library.changed` for both |
 | `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
