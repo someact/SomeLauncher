@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/proto", "crates/daemon", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+somelauncher-proto = { path = "crates/proto" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal", "fs", "process", "time"] }
+rusqlite = "0.37"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
