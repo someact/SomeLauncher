@@ -36,6 +36,7 @@ On connect the daemon first sends `hello`:
 | `bad_request` | the line is not a request |
 | `unknown_method` | no such method |
 | `bad_params` | a param is missing or has the wrong type |
+| `launch_failed` | the game could not be started (the message says why) |
 | `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
 | `internal` | the daemon failed (the message says why; the log has more) |
@@ -52,6 +53,8 @@ On connect the daemon first sends `hello`:
 | `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
 | `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner tags categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
+| `games.plan` | `{id}` | what launching would run, without running it: `{argv, env, cwd, newPrefix?, preLaunch?, postExit?}` (`env` is only what we add to the daemon's) |
+| `games.launch` | `{id}` | `{unit, log}` once the game is started in its own systemd scope. Errors: `launch_failed` (why, e.g. no Proton or umu-run), `busy` (already running). Emits `game.state` |
 | `games.duplicates` | — | groups of games with the same name (ignoring case and punctuation) that are separate entries: copies from different installs, for the user to merge or keep |
 | `games.merge` | `{id, into}` | the merged game: `id`'s sources move to `into`, empty fields are filled, tags and categories joined, playtimes added; `id` is deleted. Emits `library.changed` for both |
 | `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
@@ -72,6 +75,7 @@ On connect the daemon first sends `hello`:
 | `settings.changed` | `{key, value}` |
 | `download.progress` | `{id, label, done, total}` in bytes, a few times a second at most |
 | `download.done` | `{id, label, error?}` |
+| `game.state` | `{id, state, unit?}`: `running` (with its systemd unit) or `stopped` |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
 
 ## Game
@@ -99,7 +103,16 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `gameDirs` | folders whose subfolders `library.scan` looks at |
 | `scanIgnored` | folders `library.scan` no longer suggests (the user dismissed them) |
 | `defaultProton` | the Proton build games use when they name none (any name `proton.list` knows, or a path); the newest GE-Proton when unset |
+| `prefixDir` | where new wine prefixes go (`<prefixDir>/<game name>`); `Prefixes` in the first `gameDirs` folder when unset |
+| `umuRun` | the umu-run to use; else `umu-run` on PATH, else the copy Lutris ships |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
+
+## Launching
+Every game runs in its own `systemd-run --user --scope` (unit `somelauncher-game-<id>-<time>.scope`), its output in `$XDG_STATE_HOME/somelauncher/logs/<id>/<time>.log`.
+- `proton` and `hoyo` games: `umu-run <exe> <args>` with `WINEPREFIX` (the game's prefix; a game without one gets `<prefixDir>/<name>`, created and saved on first launch), `PROTONPATH` (its Proton, else the default), `GAMEID` (`runner.gameId`, else `umu-0`) and `WINEDLLOVERRIDES` from `runner.dllOverrides`. The working dir is `runner.workingDir`, else the exe's folder.
+- `native` games: the exe (a non-executable `.sh` through `sh`) with its args.
+- `runner.env` is applied last and wins, except that a `WINEDLLOVERRIDES` there is joined to ours.
+- `runner.preLaunch` runs through `sh -c` before the game, with its env and working dir; if it fails the game does not start. `runner.postExit` runs after the game exits.
 
 ## Proton
 A game's `runner.proton` (and `defaultProton`) may be a folder name (`GE-Proton11-7`), the internal name Steam uses (`proton-cachyos-11.0-20260703-slr-x86_64`) or a path; all resolve to the same build. Downloads go to the first Steam install's `compatibilitytools.d` (`~/.local/share/Steam/compatibilitytools.d` without Steam), where umu-run and Steam find them too.

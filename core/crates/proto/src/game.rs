@@ -97,6 +97,12 @@ pub struct Runner {
     /// Start Steam first and set up the prefix for Steam-dependent games (2c)
     #[serde(skip_serializing_if = "is_false")]
     pub needs_steam: bool,
+    /// A shell command run before the game starts (with the game's env); a failure stops the launch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_launch: Option<String>,
+    /// A shell command run after the game has exited
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_exit: Option<String>,
     /// Options added by later phases (wrappers, scripts) that this build does not know yet
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,

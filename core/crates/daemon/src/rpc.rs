@@ -1,7 +1,7 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import, proton};
+use crate::{games, import, launch, proton};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use somelauncher_proto::game::{Game, GamePatch, NewGame, Source, SourceKind};
@@ -17,6 +17,8 @@ pub struct State {
     home: PathBuf,
     http: reqwest::Client,
     pub(crate) jobs: crate::jobs::Jobs,
+    /// Running games: id → their systemd unit
+    running: Mutex<std::collections::HashMap<i64, String>>,
     events: broadcast::Sender<Event>,
     shutdown: watch::Sender<bool>,
 }
@@ -33,6 +35,7 @@ impl State {
                 .build()
                 .expect("the TLS backend loads"),
             jobs: Default::default(),
+            running: Default::default(),
             events: broadcast::channel(256).0,
             shutdown: watch::channel(false).0,
         })
@@ -138,6 +141,12 @@ impl State {
                 self.emit("library.changed", json!({ "ids": [from], "removed": true }));
                 to_json(game)
             }
+            "games.plan" => {
+                let game = self.game(&self.db.lock().unwrap(), id_param(params)?)?;
+                let ctx = self.launch_context().map_err(internal)?;
+                to_json(launch::plan(&game, &ctx).map_err(|e| Error::new("launch_failed", format!("{e:#}")))?)
+            }
+            "games.launch" => self.launch(id_param(params)?).await,
             "games.duplicates" => to_json(games::duplicates(&self.db.lock().unwrap()).map_err(internal)?),
             "games.guess" => {
                 let path = PathBuf::from(str_param(params, "path")?);
@@ -286,6 +295,58 @@ impl State {
             }
         }
         Ok(out)
+    }
+
+    fn launch_context(&self) -> anyhow::Result<launch::Context> {
+        let game_dirs: Vec<PathBuf> =
+            crate::db::setting(&self.db.lock().unwrap(), "gameDirs")?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        Ok(launch::Context {
+            protons: proton::discover(&self.home),
+            default_proton: self.setting_str("defaultProton")?,
+            umu: launch::find_umu(&self.home, self.setting_str("umuRun")?.as_deref()),
+            prefix_root: launch::prefix_root(self.setting_str("prefixDir")?.as_deref(), &game_dirs),
+        })
+    }
+
+    async fn launch(self: &Arc<Self>, id: i64) -> Result<Value, Error> {
+        let failed = |e: anyhow::Error| Error::new("launch_failed", format!("{e:#}"));
+        let mut game = self.game(&self.db.lock().unwrap(), id)?;
+        if self.running.lock().unwrap().contains_key(&id) {
+            return Err(Error::new("busy", format!("{} is already running", game.name)));
+        }
+        let plan = launch::plan(&game, &self.launch_context().map_err(internal)?).map_err(failed)?;
+        if let Some(prefix) = &plan.new_prefix {
+            std::fs::create_dir_all(prefix).map_err(|e| failed(anyhow::anyhow!("creating {}: {e}", prefix.display())))?;
+            game.prefix = Some(prefix.clone());
+            games::save(&self.db.lock().unwrap(), &game).map_err(internal)?;
+            self.emit("library.changed", json!({ "ids": [id] }));
+        }
+        let log_dir = somelauncher_proto::paths::state_dir().join("logs").join(id.to_string());
+        std::fs::create_dir_all(&log_dir).map_err(|e| internal(e.into()))?;
+        let log_path = log_dir.join(format!("{}.log", games::now()));
+        let log = std::fs::File::create(&log_path).map_err(|e| internal(e.into()))?;
+        if let Some(cmd) = &plan.pre_launch {
+            launch::run_hook(cmd, &plan, &log).await.map_err(failed)?;
+        }
+        let unit = launch::unit_name(id);
+        let mut child = launch::spawn(&plan, &unit, &game.name, &log).map_err(failed)?;
+        self.running.lock().unwrap().insert(id, unit.clone());
+        tracing::info!(id, unit, argv = ?plan.argv, "launched {}", game.name);
+        self.emit("game.state", json!({ "id": id, "state": "running", "unit": unit }));
+
+        let state = self.clone();
+        tokio::spawn(async move {
+            let status = child.wait().await;
+            if let Some(cmd) = &plan.post_exit
+                && let Err(e) = launch::run_hook(cmd, &plan, &log).await
+            {
+                tracing::warn!(id, "{e:#}");
+            }
+            state.running.lock().unwrap().remove(&id);
+            tracing::info!(id, ?status, "{} exited", game.name);
+            state.emit("game.state", json!({ "id": id, "state": "stopped" }));
+        });
+        Ok(json!({ "unit": unit, "log": log_path }))
     }
 
     pub(crate) fn setting_str(&self, key: &str) -> anyhow::Result<Option<String>> {
