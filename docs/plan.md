@@ -29,7 +29,7 @@ The original idea is `SomeLauncher.md`; the decisions below came from the planni
 | Import | Steam library, Lutris games, Twintail installs, Prism instances |
 | Laptop and PC | Power profile, battery bypass while gaming, per-machine launch defaults, gamemoderun |
 | Build check | Steam games: the installed `buildid` against the latest public build (SteamDB has no API, so a PICS source such as `api.steamcmd.net`). Other games: the build the user records |
-| Repo | git now. Commit and tick this plan after each task. Public after Phase 9 |
+| Repo | `github.com/someact/SomeLauncher` (public). Commit and tick this plan after each task, push when a phase is done |
 
 ## Architecture
 
@@ -53,14 +53,14 @@ somelauncher  (Rust CLI on the same socket: `somelauncher play <id>`, desktop en
 - Each game runs in its own `systemd-run --user --scope`, so Proton's whole process tree is tracked and playtime ends when the scope is empty. Steam games are tracked through Steam's `reaper SteamLaunch AppId=<id>` process.
 - Without the daemon, the CLI can launch one game itself (fallback, like SomeShell's CLI fallback).
 
-## Phase 0: Foundations
+## Phase 0: Foundations ✅
 Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests point `SOMELAUNCHER_SOCKET` at a short path.
 - [x] 0a. `git init`, `.gitignore`, layout: `core/` (Rust workspace: `somelauncherd`, `somelauncher` CLI, shared `proto` crate), `ui/` (Quickshell config), `docs/`, `install.sh`
 - [x] 0b. Protocol: request/response + events (`library.changed`, `game.state`, `download.progress`), versioned, documented in `docs/protocol.md`
 - [x] 0c. Daemon skeleton: socket, sqlite + migrations, config, logging to `~/.local/state/somelauncher/`
-- [ ] 0d. UI skeleton: window, left nav (logo slot left empty, Home, Online, Library, Minecraft, Settings), socket client singleton, reconnect
-- [ ] 0e. Design system: Theme (SomeShell's matugen colors when present, else our own matugen template or defaults), Glass, springs, buttons and cards. Copy the needed SomeShell components rather than importing them; note the source commit
-- [ ] 0f. Dev commands documented in CLAUDE.md (build, run the daemon in the foreground, run the UI from the repo, tests)
+- [x] 0d. UI skeleton: window, left nav (logo slot left empty, Home, Online, Library, Minecraft, Settings), socket client singleton, reconnect
+- [x] 0e. Design system: Theme (SomeShell's matugen colors when present, else our own matugen template or defaults), Glass, springs, buttons and cards. Copy the needed SomeShell components rather than importing them; note the source commit — no own matugen template yet: without SomeShell the fallback palette is used until 9a installs one
+- [x] 0f. Dev commands documented in CLAUDE.md (build, run the daemon in the foreground, run the UI from the repo, tests)
 
 ## Phase 1: Library
 - [ ] 1a. Game model: id, kind (`steam`, `proton`, `native`, `hoyo`, `minecraft`), paths, runner settings, tags, categories, favorite, hidden, playtime, last played
