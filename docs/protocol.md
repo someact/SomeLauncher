@@ -36,6 +36,7 @@ On connect the daemon first sends `hello`:
 | `bad_request` | the line is not a request |
 | `unknown_method` | no such method |
 | `bad_params` | a param is missing or has the wrong type |
+| `not_running` | the game is not running |
 | `launch_failed` | the game could not be started (the message says why) |
 | `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
@@ -55,6 +56,9 @@ On connect the daemon first sends `hello`:
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
 | `games.plan` | `{id}` | what launching would run, without running it: `{argv, env, cwd, newPrefix?, preLaunch?, postExit?}` (`env` is only what we add to the daemon's) |
 | `games.launch` | `{id}` | `{unit, log}` once the game is started in its own systemd scope. Errors: `launch_failed` (why, e.g. no Proton or umu-run), `busy` (already running). Emits `game.state` |
+| `games.stop` | `{id}` | `null`: SIGTERM to the game's whole process tree (its scope, or everything under a Steam game's reaper), SIGKILL 10 s later if it still runs. `not_running` when it is not |
+| `games.running` | — | running and starting games: `[{id, unit, since}]` (`since` is `null` while Steam has not started it yet); what a client that just connected needs |
+| `games.logs` | `{id}` | the game's last 3 logs, newest first: `[{path, time, size}]` |
 | `games.duplicates` | — | groups of games with the same name (ignoring case and punctuation) that are separate entries: copies from different installs, for the user to merge or keep |
 | `games.merge` | `{id, into}` | the merged game: `id`'s sources move to `into`, empty fields are filled, tags and categories joined, playtimes added; `id` is deleted. Emits `library.changed` for both |
 | `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
@@ -75,7 +79,7 @@ On connect the daemon first sends `hello`:
 | `settings.changed` | `{key, value}` |
 | `download.progress` | `{id, label, done, total}` in bytes, a few times a second at most |
 | `download.done` | `{id, label, error?}` |
-| `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam), `running` (with its systemd unit, or `steam:<appid>`) or `stopped` (with `error` when it failed to start) |
+| `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam), `running` (with its systemd unit, or `steam:<appid>`, and `since`) or `stopped` (with `error` when it failed to start) |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
 
 ## Game
@@ -109,7 +113,9 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching
-Every game runs in its own `systemd-run --user --scope` (unit `somelauncher-game-<id>-<time>.scope`), its output in `$XDG_STATE_HOME/somelauncher/logs/<id>/<time>.log`.
+Every game runs in its own `systemd-run --user --scope` (unit `somelauncher-game-<id>-<time>.scope`), its output in `$XDG_STATE_HOME/somelauncher/logs/<id>/<time>.log` (the last 3 are kept).
+
+Sessions: a game counts as running until its scope has no process left (`cgroup.events`), so a launcher that starts the game and exits does not end it; a Steam game until its reaper exits. Each session is a row in `sessions`, touched once a minute; when it ends its length is added to `playtime` and `lastPlayed` is set (`library.changed`). When the daemon starts it follows games that still run again, and closes the sessions of the others at their last touch (a crash loses at most a minute). Games keep running when the daemon or the UI stops.
 - `proton` and `hoyo` games: `umu-run <exe> <args>` with `WINEPREFIX` (the game's prefix; a game without one gets `<prefixDir>/<name>`, created and saved on first launch), `PROTONPATH` (its Proton, else the default), `GAMEID` (`runner.gameId`, else `umu-0`) and `WINEDLLOVERRIDES` from `runner.dllOverrides`. The working dir is `runner.workingDir`, else the exe's folder.
 - `steam` games: `steam -applaunch <appid> <args>` (flatpak Steam through `flatpak run`), started in its own scope since it becomes Steam when Steam was not running. Steam keeps its own Proton and launch options; `runner.args` are passed on. The game counts as `running` when Steam's `logs/gameprocess_log.txt` says it started and its `reaper SteamLaunch AppId=<appid>` process exists (10 minutes at most, Steam may update it first), and `stopped` when that reaper exits (pidfd). `games.launch` returns `{unit: "steam:<appid>"}`; `busy` when the game already runs in Steam.
 - `native` games: the exe with its args. Without the exec bit, a script runs through its `#!` interpreter (or `sh` for `.sh`), and a binary is given the bit first (`makeExecutable` in the plan). A Windows exe is refused with a hint to use Proton.

@@ -13,6 +13,7 @@ mod needs_steam;
 mod proton;
 mod rpc;
 mod server;
+mod session;
 mod steam_client;
 mod watch;
 
@@ -40,6 +41,9 @@ async fn main() -> Result<()> {
     tracing::info!(db = %db_path.display(), socket = %socket.display(), "started");
 
     let state = rpc::State::new(db, db_path);
+    if let Err(e) = state.recover().await {
+        tracing::error!("recovering sessions: {e:#}");
+    }
     let result = server::serve(listener, state).await;
     let _ = std::fs::remove_file(&socket);
     tracing::info!("stopped");

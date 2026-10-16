@@ -1,25 +1,25 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import, launch, needs_steam, proton, steam_client};
+use crate::{games, import, launch, proton};
 use anyhow::Context as _;
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use somelauncher_proto::game::{Game, GamePatch, Kind, NewGame, Source, SourceKind};
+use somelauncher_proto::game::{Game, GamePatch, NewGame, Source, SourceKind};
 use somelauncher_proto::{Error, Event, PROTOCOL, Reply, Request};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 
 pub struct State {
-    db: Mutex<Connection>,
+    pub(crate) db: Mutex<Connection>,
     db_path: PathBuf,
     /// Where importers look for other launchers' files
-    home: PathBuf,
+    pub(crate) home: PathBuf,
     http: reqwest::Client,
     pub(crate) jobs: crate::jobs::Jobs,
-    /// Running games: id → their systemd unit
-    running: Mutex<std::collections::HashMap<i64, String>>,
+    /// Running (or starting) games
+    pub(crate) running: Mutex<std::collections::HashMap<i64, crate::session::Running>>,
     events: broadcast::Sender<Event>,
     shutdown: watch::Sender<bool>,
 }
@@ -148,6 +148,13 @@ impl State {
                 to_json(launch::plan(&game, &ctx).map_err(|e| Error::new("launch_failed", format!("{e:#}")))?)
             }
             "games.launch" => self.launch(id_param(params)?).await,
+            "games.stop" => self.stop(id_param(params)?).await,
+            "games.running" => Ok(self.running_games()),
+            "games.logs" => {
+                let id = id_param(params)?;
+                let logs = crate::session::logs(id).into_iter().map(|(path, time, size)| json!({ "path": path, "time": time, "size": size }));
+                Ok(Value::Array(logs.collect()))
+            }
             "games.duplicates" => to_json(games::duplicates(&self.db.lock().unwrap()).map_err(internal)?),
             "games.guess" => {
                 let path = PathBuf::from(str_param(params, "path")?);
@@ -298,7 +305,7 @@ impl State {
         Ok(out)
     }
 
-    fn launch_context(&self) -> anyhow::Result<launch::Context> {
+    pub(crate) fn launch_context(&self) -> anyhow::Result<launch::Context> {
         let game_dirs: Vec<PathBuf> =
             crate::db::setting(&self.db.lock().unwrap(), "gameDirs")?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
         Ok(launch::Context {
@@ -316,124 +323,11 @@ impl State {
         })
     }
 
-    async fn launch(self: &Arc<Self>, id: i64) -> Result<Value, Error> {
-        let failed = |e: anyhow::Error| Error::new("launch_failed", format!("{e:#}"));
-        let mut game = self.game(&self.db.lock().unwrap(), id)?;
-        if self.running.lock().unwrap().contains_key(&id) {
-            return Err(Error::new("busy", format!("{} is already running", game.name)));
-        }
-        let plan = launch::plan(&game, &self.launch_context().map_err(internal)?).map_err(failed)?;
-        if game.kind == Kind::Steam {
-            return self.launch_steam(game, plan).await;
-        }
-        if let Some(prefix) = &plan.new_prefix {
-            std::fs::create_dir_all(prefix).map_err(|e| failed(anyhow::anyhow!("creating {}: {e}", prefix.display())))?;
-            game.prefix = Some(prefix.clone());
-            games::save(&self.db.lock().unwrap(), &game).map_err(internal)?;
-            self.emit("library.changed", json!({ "ids": [id] }));
-        }
-        if let Some(exe) = &plan.make_executable {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(exe).map(|m| m.permissions().mode()).unwrap_or(0o644);
-            std::fs::set_permissions(exe, std::fs::Permissions::from_mode(mode | 0o100))
-                .map_err(|e| failed(anyhow::anyhow!("making {} executable: {e}", exe.display())))?;
-            tracing::info!(id, "made {} executable", exe.display());
-        }
-        if game.runner.needs_steam && matches!(game.kind, Kind::Proton | Kind::Hoyo) {
-            self.prepare_needs_steam(&game, &plan).await.map_err(failed)?;
-        }
-        let log_dir = somelauncher_proto::paths::state_dir().join("logs").join(id.to_string());
-        std::fs::create_dir_all(&log_dir).map_err(|e| internal(e.into()))?;
-        let log_path = log_dir.join(format!("{}.log", games::now()));
-        let log = std::fs::File::create(&log_path).map_err(|e| internal(e.into()))?;
-        if let Some(cmd) = &plan.pre_launch {
-            launch::run_hook(cmd, &plan, &log).await.map_err(failed)?;
-        }
-        let unit = launch::unit_name(id);
-        let mut child = launch::spawn(&plan, &unit, &game.name, &log).map_err(failed)?;
-        self.running.lock().unwrap().insert(id, unit.clone());
-        tracing::info!(id, unit, argv = ?plan.argv, "launched {}", game.name);
-        self.emit("game.state", json!({ "id": id, "state": "running", "unit": unit }));
-
-        let state = self.clone();
-        tokio::spawn(async move {
-            let status = child.wait().await;
-            if let Some(cmd) = &plan.post_exit
-                && let Err(e) = launch::run_hook(cmd, &plan, &log).await
-            {
-                tracing::warn!(id, "{e:#}");
-            }
-            state.running.lock().unwrap().remove(&id);
-            tracing::info!(id, ?status, "{} exited", game.name);
-            state.emit("game.state", json!({ "id": id, "state": "stopped" }));
-        });
-        Ok(json!({ "unit": unit, "log": log_path }))
-    }
-
-    /// A Steam game: `steam -applaunch`, then followed from Steam's process log
-    /// (start) to its reaper process (exit). Steam owns the launch, so no scope or log of ours.
-    async fn launch_steam(self: &Arc<Self>, game: Game, plan: launch::Plan) -> Result<Value, Error> {
-        let failed = |e: anyhow::Error| Error::new("launch_failed", format!("{e:#}"));
-        let id = game.id;
-        let (appid, flatpak) = launch::steam_app(&game).ok_or_else(|| failed(anyhow::anyhow!("no Steam app id")))?;
-        if steam_client::find_reaper(&appid).is_some() {
-            return Err(Error::new("busy", format!("{} is already running in Steam", game.name)));
-        }
-        let root = import::steam::roots(&self.home)
-            .into_iter()
-            .find(|r| r.to_string_lossy().contains("com.valvesoftware.Steam") == flatpak)
-            .ok_or_else(|| failed(anyhow::anyhow!("Steam is not installed")))?;
-        let offset = steam_client::log_offset(&steam_client::process_log(&root));
-        let skip = if flatpak { 3 } else { 1 };
-        steam_client::run(&self.home, flatpak, &plan.argv[skip..]).map_err(failed)?;
-        let unit = format!("steam:{appid}");
-        self.running.lock().unwrap().insert(id, unit.clone());
-        self.emit("game.state", json!({ "id": id, "state": "starting", "step": "steam" }));
-        tracing::info!(id, appid, "asked Steam to start {}", game.name);
-
-        let state = self.clone();
-        tokio::spawn(async move {
-            let result = async {
-                let reaper = steam_client::wait_started(&root, &appid, offset).await?;
-                state.emit("game.state", json!({ "id": id, "state": "running", "unit": format!("steam:{appid}") }));
-                tracing::info!(id, reaper, "{} is running", game.name);
-                steam_client::wait_pid(reaper).await
-            }
-            .await;
-            state.running.lock().unwrap().remove(&id);
-            match result {
-                Ok(()) => {
-                    tracing::info!(id, "{} exited", game.name);
-                    state.emit("game.state", json!({ "id": id, "state": "stopped" }));
-                }
-                Err(e) => {
-                    tracing::warn!(id, "{}: {e:#}", game.name);
-                    state.emit("game.state", json!({ "id": id, "state": "stopped", "error": format!("{e:#}") }));
-                }
-            }
-        });
-        Ok(json!({ "unit": unit }))
-    }
-
-    /// LUTRIS_SETUP.md, automated: Steam running and logged in, its DLLs in the prefix, `steam_appid.txt`.
-    async fn prepare_needs_steam(&self, game: &Game, plan: &launch::Plan) -> anyhow::Result<()> {
-        if !steam_client::status(&self.home).logged_in {
-            self.emit("game.state", json!({ "id": game.id, "state": "starting", "step": "steam" }));
-            steam_client::ensure_running(&self.home).await?;
-        }
-        let prefix = plan.env.get("WINEPREFIX").map(PathBuf::from).context("the plan has no prefix")?;
-        let copied = needs_steam::prepare_prefix(&needs_steam::steam_root(&self.home)?, &prefix)?;
-        if !copied.is_empty() {
-            tracing::info!(id = game.id, ?copied, "copied Steam files into {}", prefix.display());
-        }
-        needs_steam::write_app_id(game)
-    }
-
     pub(crate) fn setting_str(&self, key: &str) -> anyhow::Result<Option<String>> {
         Ok(crate::db::setting(&self.db.lock().unwrap(), key)?.and_then(|v| v.as_str().map(String::from)))
     }
 
-    fn game(&self, db: &Connection, id: i64) -> Result<Game, Error> {
+    pub(crate) fn game(&self, db: &Connection, id: i64) -> Result<Game, Error> {
         games::get(db, id).map_err(internal)?.ok_or_else(|| not_found(id))
     }
 }
@@ -458,7 +352,7 @@ fn str_param<'a>(params: &'a Value, key: &str) -> Result<&'a str, Error> {
     params.get(key).and_then(Value::as_str).ok_or_else(|| Error::new("bad_params", format!("missing string `{key}`")))
 }
 
-fn internal(e: anyhow::Error) -> Error {
+pub(crate) fn internal(e: anyhow::Error) -> Error {
     tracing::error!("{e:#}");
     Error::new("internal", format!("{e:#}"))
 }

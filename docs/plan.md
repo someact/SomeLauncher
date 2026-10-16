@@ -78,7 +78,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 2d. Steam runner: `steam -applaunch <id> <args>`, detect start and exit through the reaper process
 - [x] 2e. Native runner (Linux executables, scripts)
 - [x] 2f. Wrappers per game with global defaults: gamescope (size, refresh, FSR, HDR), MangoHud, gamemoderun, PRIME offload on hybrid GPUs
-- [ ] 2g. Session: systemd scope, playtime saved even after a crash, a stop button (kills the scope), last 3 logs per game
+- [x] 2g. Session: systemd scope, playtime saved even after a crash, a stop button (kills the scope), last 3 logs per game
 - [ ] 2h. CLI `somelauncher play|list|stop` and `.desktop` entries per game (optional)
 
 ## Phase 3: Metadata and artwork

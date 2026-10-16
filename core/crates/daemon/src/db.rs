@@ -36,6 +36,17 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX game_sources_game ON game_sources(game_id);",
     // 3: source entries whose game the user removed, so importers skip them
     "CREATE TABLE ignored_sources (source TEXT NOT NULL, source_id TEXT NOT NULL, PRIMARY KEY (source, source_id));",
+    // 4: play sessions; `seen` is the last heartbeat, so a crash loses at most a minute
+    "CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        unit TEXT NOT NULL,
+        started INTEGER NOT NULL,
+        seen INTEGER NOT NULL,
+        ended INTEGER
+    );
+    CREATE INDEX sessions_game ON sessions(game_id);
+    CREATE INDEX sessions_open ON sessions(ended) WHERE ended IS NULL;",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {
