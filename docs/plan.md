@@ -67,7 +67,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 1b. Steam import: `libraryfolders.vdf` + `appmanifest_*.acf` (installed), owned games through the Web API when a key is set; Steam's own Proton choice is shown read-only
 - [x] 1c. Lutris import: `games/*.yml` + `pga.db` → exe, prefix, wine version, env, DLL overrides, args
 - [x] 1d. Twintail import: find Genshin/ZZZ install folders, prefixes and runner versions, so nothing is downloaded again
-- [ ] 1e. Prism import: instances dir, `instance.cfg`, `mmc-pack.json`, `instgroups.json`
+- [x] 1e. Prism import: instances dir, `instance.cfg`, `mmc-pack.json`, `instgroups.json`
 - [ ] 1f. Manual add: pick an exe or folder, guess the name from the folder, then confirm art (3a) and runner; a library scan for new folders under chosen game dirs
 - [ ] 1g. Duplicates (the same game from two sources) are merged, keeping one entry
 

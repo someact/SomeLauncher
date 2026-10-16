@@ -4,6 +4,7 @@
 //! nothing the user edited is overwritten.
 
 pub mod lutris;
+pub mod prism;
 pub mod steam;
 pub mod twintail;
 pub mod vdf;

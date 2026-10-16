@@ -133,7 +133,7 @@ impl State {
 
     /// Runs the importers; one failing does not stop the others.
     async fn import(&self, params: &Value) -> Result<Value, Error> {
-        let all = ["steam", "lutris", "twintail"];
+        let all = ["steam", "lutris", "twintail", "prism"];
         let sources: Vec<String> = match params.get("sources") {
             Some(v) => parse(v)?,
             None => all.iter().map(|s| s.to_string()).collect(),
@@ -148,6 +148,7 @@ impl State {
                 "steam" => self.import_steam(&mut summary).await,
                 "lutris" => import::lutris::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
                 "twintail" => import::twintail::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
+                "prism" => import::prism::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
                 _ => unreachable!(),
             };
             if let Err(e) = result {
