@@ -1,7 +1,7 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import};
+use crate::{games, import, proton};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use somelauncher_proto::game::{Game, GamePatch, NewGame, Source, SourceKind};
@@ -16,6 +16,7 @@ pub struct State {
     /// Where importers look for other launchers' files
     home: PathBuf,
     http: reqwest::Client,
+    pub(crate) jobs: crate::jobs::Jobs,
     events: broadcast::Sender<Event>,
     shutdown: watch::Sender<bool>,
 }
@@ -31,6 +32,7 @@ impl State {
                 .timeout(std::time::Duration::from_secs(20))
                 .build()
                 .expect("the TLS backend loads"),
+            jobs: Default::default(),
             events: broadcast::channel(256).0,
             shutdown: watch::channel(false).0,
         })
@@ -51,7 +53,7 @@ impl State {
         Event { event: "hello".into(), data: json!({ "protocol": PROTOCOL, "version": env!("CARGO_PKG_VERSION") }) }
     }
 
-    pub async fn handle(&self, req: Request) -> Reply {
+    pub async fn handle(self: &Arc<Self>, req: Request) -> Reply {
         match self.call(&req.method, &req.params).await {
             Ok(result) => Reply::ok(req.id, result),
             Err(e) => {
@@ -61,7 +63,7 @@ impl State {
         }
     }
 
-    async fn call(&self, method: &str, params: &Value) -> Result<Value, Error> {
+    async fn call(self: &Arc<Self>, method: &str, params: &Value) -> Result<Value, Error> {
         match method {
             "ping" => Ok(json!({ "pong": true })),
             "status" => Ok(json!({
@@ -144,6 +146,46 @@ impl State {
             }
             "library.import" => self.import(params).await,
             "library.scan" => to_json(self.scan().map_err(internal)?),
+            "proton.list" => {
+                let list = proton::discover(&self.home);
+                let default = proton::default(&list, self.setting_str("defaultProton").map_err(internal)?.as_deref());
+                Ok(json!({ "builds": list, "default": default.map(|p| p.name) }))
+            }
+            "proton.available" => {
+                let source = str_param(params, "source")?;
+                to_json(proton::releases(&self.http, source, &proton::discover(&self.home)).await.map_err(internal)?)
+            }
+            "proton.install" => {
+                let (source, tag) = (str_param(params, "source")?, str_param(params, "tag")?);
+                let releases = proton::releases(&self.http, source, &proton::discover(&self.home)).await.map_err(internal)?;
+                let release = releases.into_iter().find(|r| r.tag == tag).ok_or_else(|| Error::new("not_found", format!("no release {tag}")))?;
+                let id = format!("proton:{tag}");
+                let (http, dest) = (self.http.clone(), proton::install_dir(&self.home));
+                crate::jobs::spawn(self, &id, &format!("Proton {tag}"), move |p| proton::install(http, release, dest, p))
+                    .map_err(|e| Error::new("busy", format!("{e:#}")))?;
+                Ok(json!({ "id": id }))
+            }
+            "proton.remove" => {
+                let name = str_param(params, "name")?;
+                let list = proton::discover(&self.home);
+                let p = proton::resolve(&list, name).ok_or_else(|| Error::new("not_found", format!("no Proton {name}")))?;
+                // Only builds we could have installed; Steam's and the system's belong to them
+                let ours = proton::install_dir(&self.home).canonicalize().is_ok_and(|d| p.dir.parent() == Some(d.as_path()));
+                if !ours {
+                    return Err(Error::new("bad_params", format!("{} is not in compatibilitytools.d", p.name)));
+                }
+                std::fs::remove_dir_all(&p.dir).map_err(|e| internal(e.into()))?;
+                Ok(Value::Null)
+            }
+            "downloads.list" => to_json(self.jobs.list()),
+            "downloads.cancel" => {
+                let id = str_param(params, "id")?;
+                if !self.jobs.cancel(id) {
+                    return Err(Error::new("not_found", format!("no download {id}")));
+                }
+                self.emit("download.done", json!({ "id": id, "error": "cancelled" }));
+                Ok(Value::Null)
+            }
             "shutdown" => {
                 let _ = self.shutdown.send(true);
                 Ok(Value::Null)
@@ -244,6 +286,10 @@ impl State {
             }
         }
         Ok(out)
+    }
+
+    pub(crate) fn setting_str(&self, key: &str) -> anyhow::Result<Option<String>> {
+        Ok(crate::db::setting(&self.db.lock().unwrap(), key)?.and_then(|v| v.as_str().map(String::from)))
     }
 
     fn game(&self, db: &Connection, id: i64) -> Result<Game, Error> {

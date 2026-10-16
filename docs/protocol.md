@@ -36,6 +36,7 @@ On connect the daemon first sends `hello`:
 | `bad_request` | the line is not a request |
 | `unknown_method` | no such method |
 | `bad_params` | a param is missing or has the wrong type |
+| `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
 | `internal` | the daemon failed (the message says why; the log has more) |
 
@@ -56,6 +57,12 @@ On connect the daemon first sends `hello`:
 | `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
 | `library.import` | `{sources?}`: a list of `steam`, `lutris`, `twintail`, `prism`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
 | `library.scan` | — | a `games.guess` result for each folder directly under `gameDirs` that holds an executable and no known game, minus `scanIgnored`. Nothing is added |
+| `proton.list` | — | `{builds, default}`: every Proton build `{name, internal, dir, source}` (`source`: `user`, `system`, `steam`, `lutris`, `twintail`) and the default's `name` |
+| `proton.available` | `{source}`: `ge` or `cachyos` | the newest releases with an x86_64 build: `{source, tag, published, url, checksumUrl, size, installed}` |
+| `proton.install` | `{source, tag}` | `{id}` at once; the download runs in the background (`download.*` events), is checked against its sha512 and unpacked into `compatibilitytools.d`. Error `busy` when it already runs |
+| `proton.remove` | `{name}` | `null`; only builds in our `compatibilitytools.d` |
+| `downloads.list` | — | running jobs `{id, label, done, total}` |
+| `downloads.cancel` | `{id}` | `null`; the job stops and its partial files are removed. Emits `download.done` with `error: "cancelled"` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -63,6 +70,8 @@ On connect the daemon first sends `hello`:
 | :--- | :--- |
 | `hello` | `{protocol, version}`, sent only on connect |
 | `settings.changed` | `{key, value}` |
+| `download.progress` | `{id, label, done, total}` in bytes, a few times a second at most |
+| `download.done` | `{id, label, error?}` |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
 
 ## Game
@@ -89,7 +98,11 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `steamApiKey` | Steam Web API key; with it `library.import` adds owned games that are not installed |
 | `gameDirs` | folders whose subfolders `library.scan` looks at |
 | `scanIgnored` | folders `library.scan` no longer suggests (the user dismissed them) |
+| `defaultProton` | the Proton build games use when they name none (any name `proton.list` knows, or a path); the newest GE-Proton when unset |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
+
+## Proton
+A game's `runner.proton` (and `defaultProton`) may be a folder name (`GE-Proton11-7`), the internal name Steam uses (`proton-cachyos-11.0-20260703-slr-x86_64`) or a path; all resolve to the same build. Downloads go to the first Steam install's `compatibilitytools.d` (`~/.local/share/Steam/compatibilitytools.d` without Steam), where umu-run and Steam find them too.
 
 ## Imports
 Re-importing is safe: a game seen before is updated (paths only where empty, playtime and last played to the larger value, the source's `data` replaced), and nothing the user edited is overwritten. A removed game is remembered and not imported again. An entry whose install is already in the library (the same exe, or the same folder and kind) is linked to that game as a second source instead of added; the same game installed twice stays two entries until `games.merge`.

@@ -6,6 +6,8 @@ mod db;
 mod games;
 mod guess;
 mod import;
+mod jobs;
+mod proton;
 mod rpc;
 mod server;
 

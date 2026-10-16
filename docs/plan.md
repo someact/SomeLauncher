@@ -72,7 +72,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [~] 1g. Duplicates (the same game from two sources) are merged, keeping one entry — automatic when it is the same install (same exe, or same folder and kind); the same name from different installs (e.g. a Steam copy and a Lutris copy) is two real copies, so `games.duplicates` lists them and `games.merge` merges on the user's say
 
 ## Phase 2: Runners and launch
-- [ ] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings
+- [x] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings
 - [ ] 2b. umu-run runner: prefix per game (default `<games>/Prefixes/<name>`), `GAMEID`/`UMU_ID`, env, args, DLL overrides, working dir, pre/post scripts
 - [ ] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test game: How to Fish (`<games>/How to Fish`, OnlineFix)
 - [ ] 2d. Steam runner: `steam -applaunch <id> <args>`, detect start and exit through the reaper process
