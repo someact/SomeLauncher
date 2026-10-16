@@ -42,6 +42,16 @@ Item {
         }
     }
 
+    // Twintail's version until our own Hoyo support (Phase 6) reads the game files
+    function hoyoVersion(g) {
+        if (!g)
+            return "";
+        const b = g.build ?? {};
+        const s = g.sources.find(s => s.data && s.data.version);
+        const v = b.installed || b.recorded || (s ? s.data.version : "");
+        return v ? "Version " + v : "Version unknown";
+    }
+
     function play(id) {
         selectedId = id;
         if (!(id in Library.running))
@@ -113,9 +123,10 @@ Item {
                     spacing: Theme.space.l
                     Repeater {
                         model: root.hoyoIds
-                        HoyoCard {
+                        WideCard {
                             required property int modelData
                             gameId: modelData
+                            subtitle: root.hoyoVersion(game)
                             selected: !!root.selected && root.selected.id === modelData
                             onClicked: root.selectedId = modelData
                             onDoubleClicked: root.play(modelData)

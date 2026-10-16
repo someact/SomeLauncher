@@ -12,6 +12,7 @@ ClippingRectangle {
     property var game: null
     property var sources: ["grid"]          // art kinds, best first
     property bool showName: true            // the fallback names the game
+    property real fallbackInset: 0          // keeps the fallback above text drawn over the card's bottom
     readonly property string source: {
         for (const k of sources) {
             const u = Library.art(game, k);
@@ -48,14 +49,16 @@ ClippingRectangle {
     }
 
     Column {
-        anchors.centerIn: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: -root.fallbackInset / 2
         width: parent.width - Theme.space.l * 2
         spacing: Theme.space.m
         visible: root.source === "" || img.status === Image.Error
         Item {
             readonly property string icon: Library.art(root.game, "icon")
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(root.width, root.height) * 0.4
+            width: Math.min(root.width, root.height - root.fallbackInset) * 0.45
             height: width
             Image {
                 anchors.fill: parent

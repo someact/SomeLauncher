@@ -2,7 +2,7 @@ import QtQuick
 import qs.core
 
 // A portrait game card: grid art (or its fallback), lifting on hover, with a
-// ring when it is the selected one, and badges: running, update out, favorite.
+// ring when it is the selected one, and badges: Steam, running, update out, favorite.
 Item {
     id: root
 
@@ -54,6 +54,13 @@ Item {
             color: "transparent"
             border.width: 1
             border.color: root.hovered ? Qt.rgba(1, 1, 1, 0.3) : Theme.glassRim
+        }
+
+        SteamBadge {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.margins: Theme.space.s
+            game: root.game
         }
 
         Row {

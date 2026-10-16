@@ -74,6 +74,7 @@ ShellRoot {
                 height: parent.height
                 source: app.fileFor(app.page)
                 asynchronous: false
+                focus: true   // the page gets the keys (Library: type to search)
                 onLoaded: enter.restart()
             }
             // New page: fade in while rising a little

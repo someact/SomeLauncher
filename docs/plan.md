@@ -90,7 +90,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 
 ## Phase 4: Core UI
 - [~] 4a. Home: "Continue playing" (last played), favorites, the Hoyo games' update state; games not played for 30 days drop off Home (configurable) but stay in Library — a banner for the last played game (a click on a card shows that one, a double click plays), `home.recentDays` in config.json; favorites never drop off; the Hoyo cards show the installed version and `build.updateAvailable`, which the Hoyo update check (6e) fills
-- [ ] 4b. Library (Netflix layout): a hero row for recent/favorite, a row per category, a Steam badge on Steam and Needs-Steam games, search and filter
+- [x] 4b. Library (Netflix layout): a hero row for recent/favorite, a row per category, a Steam badge on Steam and Needs-Steam games, search and filter — games without a category get a row per kind, uninstalled ones a last row; search (name, tag, category; typing anywhere starts it) and the filter chips show a grid. A click picks a card until 4c opens the game page
 - [ ] 4c. Game page (PS5 layout): full hero art, logo, a big Play button, a settings button, playtime, last played, achievement progress, build/update badge; the shared element moves from card to page
 - [ ] 4d. Game settings sheet: Simple (runner, Proton, Needs Steam, gamescope, MangoHud) and Advanced (env, args, DLL overrides, prefix, scripts, logs). Nothing more than one click deep for the common options
 - [ ] 4e. Add game wizard: 3 steps (pick file → confirm name and art → runner); import dialog on the first run

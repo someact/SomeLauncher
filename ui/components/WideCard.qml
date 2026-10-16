@@ -1,25 +1,18 @@
 import QtQuick
 import qs.core
 
-// A landscape card for a Hoyo game on Home: its art, name, installed version
-// and update state. The version is Twintail's until our own Hoyo support
-// (Phase 6) reads it from the game files and checks for updates.
+// A landscape game card: hero art (else grid, cropped), the name and a
+// `subtitle` (Home: a Hoyo game's version), "Playing now" while it runs, an
+// update chip and the Steam badge.
 Item {
     id: root
 
     property int gameId
     property bool selected: false
+    property string subtitle: game ? Library.ago(game.lastPlayed) : ""
     readonly property var game: Library.byId[gameId] ?? null
     readonly property bool running: gameId in Library.running
     readonly property bool hovered: mouse.containsMouse
-    readonly property string version: {
-        if (!game)
-            return "";
-        if (game.build && (game.build.installed || game.build.recorded))
-            return game.build.installed || game.build.recorded;
-        const s = game.sources.find(s => s.data && s.data.version);
-        return s ? s.data.version : "";
-    }
     readonly property bool update: !!game && !!game.build && game.build.updateAvailable
 
     signal clicked
@@ -55,6 +48,7 @@ Item {
             game: root.game
             sources: ["hero", "grid"]
             showName: false
+            fallbackInset: 64
         }
         Rectangle {
             anchors.fill: art
@@ -65,6 +59,13 @@ Item {
             }
             border.width: 1
             border.color: root.hovered ? Qt.rgba(1, 1, 1, 0.3) : Theme.glassRim
+        }
+
+        SteamBadge {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.margins: Theme.space.m
+            game: root.game
         }
 
         Column {
@@ -84,7 +85,7 @@ Item {
                 spacing: Theme.space.s
                 SText {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.running ? "Playing now" : root.version ? "Version " + root.version : "Version unknown"
+                    text: root.running ? "Playing now" : root.subtitle
                     color: Theme.fgOnArtDim
                 }
                 Rectangle {

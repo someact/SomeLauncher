@@ -31,6 +31,8 @@ core/target/debug/somelauncher list | play <game> | stop <game> | status | call 
 
 ## QML gotchas
 - Qt 6.12's QML compiler segfaults on optional calls (`f?.()`, `obj[k]?.()`): write `if (f) f()`.
+- A `WheelHandler` swallows every wheel it gets, even with `event.accepted = false`, and an interactive Flickable eats vertical wheels: a sideways row inside a scrolling page is `interactive: false` with `WheelHandler { orientation: Qt.Horizontal }` (`components/GameRow.qml`).
+- Items declared inside a ListView/Flickable go into its scrolling `contentItem`; overlays (arrows, scrims) go beside it in a wrapper Item.
 
 ## SomeShell integration
 Optional, detected at runtime: matugen colors and glass settings (`~/.config/someshell/`), game mode (gamemoderun → SomeShell's `GameClients` turns it on), island states and an overlay card over SomeShell IPC (`qs -c someshell ipc call ...`). SomeShell's QML, blur, animation and font gotchas in its CLAUDE.md apply here too (compositor blur via `BackgroundEffect`, `SpringAnimation` only in a `Behavior`, no `cache: false` on network `AnimatedImage`, never animate a font axis).

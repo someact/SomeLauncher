@@ -4,13 +4,14 @@ import QtQuick
 import Quickshell
 
 // The daemon's game library, kept current from its events (never polled):
-// `games` (visible games by name), `byId`, and `running` (id → the latest
-// `game.state`). Pages derive their rows as lists of ids and bind each card to
+// `all` (every game by name, hidden ones too), `games` (the visible ones),
+// `byId`, and `running` (id → the latest `game.state`). Pages derive their rows as lists of ids and bind each card to
 // `Library.byId[id]`, so a changed game updates its card without rebuilding the row.
 //   Library.play(id, error => …)   Library.stop(id)
 Singleton {
     id: root
 
+    property var all: []
     property var games: []
     property var byId: ({})
     property var running: ({})
@@ -19,7 +20,7 @@ Singleton {
     property real now: Date.now() / 1000
 
     function refresh() {
-        Daemon.call("games.list", undefined, (list, error) => {
+        Daemon.call("games.list", { includeHidden: true }, (list, error) => {
             if (error)
                 return;
             root._set(list);
@@ -40,7 +41,8 @@ Singleton {
         for (const g of list)
             m[g.id] = g;
         now = Date.now() / 1000;
-        games = list;
+        all = list;
+        games = list.filter(g => !g.hidden);
         byId = m;
     }
 
@@ -64,9 +66,9 @@ Singleton {
         }
     }
     function _merge(got) {
-        const list = games.filter(g => !(g.id in got));
+        const list = all.filter(g => !(g.id in got));
         for (const id in got)
-            if (got[id] && !got[id].hidden)
+            if (got[id])
                 list.push(got[id]);
         list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         _set(list);
