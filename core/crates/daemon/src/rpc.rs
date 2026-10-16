@@ -325,6 +325,13 @@ impl State {
             games::save(&self.db.lock().unwrap(), &game).map_err(internal)?;
             self.emit("library.changed", json!({ "ids": [id] }));
         }
+        if let Some(exe) = &plan.make_executable {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(exe).map(|m| m.permissions().mode()).unwrap_or(0o644);
+            std::fs::set_permissions(exe, std::fs::Permissions::from_mode(mode | 0o100))
+                .map_err(|e| failed(anyhow::anyhow!("making {} executable: {e}", exe.display())))?;
+            tracing::info!(id, "made {} executable", exe.display());
+        }
         if game.runner.needs_steam && matches!(game.kind, Kind::Proton | Kind::Hoyo) {
             self.prepare_needs_steam(&game, &plan).await.map_err(failed)?;
         }

@@ -28,6 +28,9 @@ pub struct Plan {
     /// A prefix chosen for a game that had none; the game keeps it from now on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_prefix: Option<PathBuf>,
+    /// A Linux program without the exec bit, given it before the start
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub make_executable: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pre_launch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,6 +75,7 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
     let exe = || game.exe.as_ref().ok_or_else(|| anyhow!("{} has no executable set", game.name));
     let mut env = BTreeMap::new();
     let mut new_prefix = None;
+    let mut make_executable = None;
     let mut argv = match game.kind {
         Kind::Proton | Kind::Hoyo => {
             let umu = ctx.umu.as_ref().ok_or_else(|| anyhow!("umu-run is not installed (install umu-launcher)"))?;
@@ -104,9 +108,9 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
         }
         Kind::Native => {
             let exe = exe()?;
-            let is_script = exe.extension().is_some_and(|e| e == "sh");
-            let runnable = std::fs::metadata(exe).is_ok_and(|m| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0);
-            if is_script && !runnable { vec!["sh".into(), path_str(exe)] } else { vec![path_str(exe)] }
+            let (argv, chmod) = native_argv(exe)?;
+            make_executable = chmod.then(|| exe.clone());
+            argv
         }
         Kind::Steam => {
             let (appid, flatpak) = steam_app(game).ok_or_else(|| anyhow!("{} has no Steam app id", game.name))?;
@@ -114,9 +118,17 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
             argv.extend(["-applaunch".into(), appid]);
             argv.extend(r.args.iter().cloned());
             // Steam starts the game itself, with its own Proton and launch options
-            return Ok(Plan { argv, env, cwd: None, new_prefix: None, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() });
+            return Ok(Plan {
+                argv,
+                env,
+                cwd: None,
+                new_prefix: None,
+                make_executable: None,
+                pre_launch: r.pre_launch.clone(),
+                post_exit: r.post_exit.clone(),
+            });
         }
-        Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 2e)"),
+        Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 8c)"),
     };
     argv.extend(r.args.iter().cloned());
     // The game's own env wins; overrides it sets are joined with ours
@@ -132,7 +144,37 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
         }
     }
     let cwd = r.working_dir.clone().or_else(|| game.exe.as_ref().and_then(|e| e.parent().map(Path::to_path_buf)));
-    Ok(Plan { argv, env, cwd, new_prefix, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() })
+    Ok(Plan { argv, env, cwd, new_prefix, make_executable, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() })
+}
+
+/// How a Linux program starts: directly when it can; a script without the exec
+/// bit through its interpreter; a binary without it directly once it has the
+/// bit (the bool asks for that: games unpacked from archives or NTFS lose it).
+fn native_argv(exe: &Path) -> Result<(Vec<String>, bool)> {
+    use std::io::Read;
+    let mut head = Vec::with_capacity(256);
+    std::fs::File::open(exe)
+        .and_then(|f| f.take(256).read_to_end(&mut head))
+        .with_context(|| format!("{} cannot be read", exe.display()))?;
+    if head.starts_with(b"MZ") {
+        bail!("{} is a Windows program: set its runner to Proton", exe.display());
+    }
+    let executable = std::fs::metadata(exe).is_ok_and(|m| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0);
+    if executable {
+        return Ok((vec![path_str(exe)], false));
+    }
+    if let Some(line) = head.strip_prefix(b"#!") {
+        let line = String::from_utf8_lossy(line.split(|&b| b == b'\n').next().unwrap_or_default()).into_owned();
+        let mut argv: Vec<String> = line.split_whitespace().map(String::from).collect();
+        if !argv.is_empty() {
+            argv.push(path_str(exe));
+            return Ok((argv, false));
+        }
+    }
+    if exe.extension().is_some_and(|e| e == "sh") {
+        return Ok((vec!["sh".into(), path_str(exe)], false));
+    }
+    Ok((vec![path_str(exe)], true))
 }
 
 /// A Steam game's app id and whether it belongs to flatpak Steam.
@@ -290,13 +332,37 @@ mod tests {
     }
 
     #[test]
-    fn native_games_run_directly() {
+    fn native_games_run_directly_or_through_their_interpreter() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let file = |name: &str, body: &[u8], mode: u32| {
+            let p = t.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+            p
+        };
         let mut g = game(Kind::Native);
-        g.exe = Some("/g/Valheim/valheim.x86_64".into());
+        let run = |g: &mut Game, exe: &Path| {
+            g.exe = Some(exe.into());
+            plan(g, &ctx())
+        };
+
+        let elf = file("valheim.x86_64", b"\x7fELF....", 0o755);
         g.runner.args = vec!["-console".into()];
-        let p = plan(&g, &ctx()).unwrap();
-        assert_eq!(p.argv, ["/g/Valheim/valheim.x86_64", "-console"]);
-        assert!(p.env.is_empty());
+        let p = run(&mut g, &elf).unwrap();
+        assert_eq!(p.argv, [elf.to_str().unwrap(), "-console"]);
+        assert!(p.env.is_empty() && p.make_executable.is_none());
+        g.runner.args.clear();
+
+        let bare = file("game.bin", b"\x7fELF....", 0o644);
+        assert_eq!(run(&mut g, &bare).unwrap().make_executable, Some(bare.clone()));
+        let shebang = file("start", b"#!/usr/bin/env bash -e\necho", 0o644);
+        assert_eq!(run(&mut g, &shebang).unwrap().argv, ["/usr/bin/env", "bash", "-e", shebang.to_str().unwrap()]);
+        let sh = file("run.sh", b"echo hi", 0o644);
+        assert_eq!(run(&mut g, &sh).unwrap().argv, ["sh", sh.to_str().unwrap()]);
+        let win = file("game.exe", b"MZ\x90\x00", 0o755);
+        assert!(run(&mut g, &win).unwrap_err().to_string().contains("Proton"));
+        assert!(run(&mut g, &t.path().join("missing")).is_err());
         g.exe = None;
         assert!(plan(&g, &ctx()).is_err());
     }
