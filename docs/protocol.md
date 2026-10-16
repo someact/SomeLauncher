@@ -67,6 +67,9 @@ On connect the daemon first sends `hello`:
 | `meta.search` | `{id?, query?}`: a game (its name is the query) and/or a query | candidates `[{source, id, name, year?, cover?, thumb?, reason?}]`, best first: the ids the game names itself first (`reason`: `Steam library`, `OnlineFix.ini`, `steam_appid.txt`), then the Steam store's and SteamGridDB's (with `steamGridDbKey`) hits by name. `cover` is a portrait image URL to confirm with, `thumb` a fallback. Error `network` |
 | `meta.match` | `{id, source, sourceId}`: a candidate | the game with its `meta` set. The other source's id is filled in when found (a Steam app's SteamGridDB id, a SteamGridDB game's Steam app by its exact name). Emits `library.changed` |
 | `meta.unmatch` | `{id}` | `null`; the game has no match again |
+| `art.fetch` | `{id?, force?}` | with `id`: the game, its art brought up to date (`force` looks for better automatic art too); without: `{id}` of a background job doing every game (`download.*` events, `done`/`total` in games). Art the user chose is never replaced |
+| `art.set` | `{id, kind, origin?}`: `kind` is `hero`, `grid`, `logo` or `icon`; `origin` a file or URL | the game with that art; without `origin` the kind goes back to automatic |
+| `art.options` | `{id, kind}` | the automatic origins for that kind, best first, to pick another with `art.set` |
 | `library.import` | `{sources?}`: a list of `steam`, `lutris`, `twintail`, `prism`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
 | `library.scan` | — | a `games.guess` result for each folder directly under `gameDirs` that holds an executable and no known game, minus `scanIgnored`. Nothing is added |
 | `proton.list` | — | `{builds, default}`: every Proton build `{name, internal, dir, source}` (`source`: `user`, `system`, `steam`, `lutris`, `twintail`) and the default's `name` |
@@ -102,6 +105,7 @@ On connect the daemon first sends `hello`:
 ```
 - `kind`: `steam` (run through Steam), `proton` (umu-run), `native`, `hoyo`, `minecraft` (a Prism instance).
 - `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
+- `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Automatic art comes, best first, from SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
 - `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import.
 - `sources`: where the game was imported from (`steam`, `lutris`, `twintail`, `prism`, `manual`), with what that source said in `data`. A merged game (the same game from two sources) has several.
 

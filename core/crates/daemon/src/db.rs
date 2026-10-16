@@ -49,6 +49,15 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX sessions_open ON sessions(ended) WHERE ended IS NULL;",
     // 5: metadata matches (proto::game::Meta as JSON)
     "CREATE TABLE meta (game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE, data TEXT NOT NULL);",
+    // 6: art per game and kind: where it came from (URL or file), whether the user chose it, the cached file
+    "CREATE TABLE art (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        custom INTEGER NOT NULL DEFAULT 0,
+        file TEXT,
+        PRIMARY KEY (game_id, kind)
+    );",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

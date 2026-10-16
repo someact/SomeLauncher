@@ -33,8 +33,11 @@ fn arg(s: &str) -> String {
     format!("\"{}\"", escaped.replace('%', "%%"))
 }
 
-/// An icon file the sources know (Prism's instance icon, Lutris' art), else the generic one.
+/// The game's icon art, else an icon file the sources know (Prism's instance icon, Lutris' art), else the generic one.
 fn icon(game: &Game) -> String {
+    if let Some(icon) = game.art.icon.as_ref().filter(|p| p.is_file()) {
+        return icon.to_string_lossy().into_owned();
+    }
     let local = game.sources.iter().flat_map(|s| [&s.data["icon"], &s.data["coverart"]]).filter_map(|v| v.as_str()).find(|p| Path::new(p).is_file());
     local.map(String::from).unwrap_or_else(|| "applications-games".into())
 }

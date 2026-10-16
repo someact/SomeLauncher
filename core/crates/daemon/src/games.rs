@@ -42,6 +42,7 @@ fn from_row(row: &Row) -> rusqlite::Result<Game> {
         added: row.get(13)?,
         sources: Vec::new(),
         meta: None,
+        art: Default::default(),
     })
 }
 
@@ -81,6 +82,7 @@ pub fn get(conn: &Connection, id: i64) -> Result<Option<Game>> {
     let Some(mut game) = game else { return Ok(None) };
     game.sources = sources(conn, id)?;
     game.meta = meta(conn, id)?;
+    game.art = crate::meta::art::of(conn, id)?;
     Ok(Some(game))
 }
 
@@ -93,6 +95,7 @@ pub fn list(conn: &Connection, include_hidden: bool) -> Result<Vec<Game>> {
     for g in &mut games {
         g.sources = sources(conn, g.id)?;
         g.meta = meta(conn, g.id)?;
+        g.art = crate::meta::art::of(conn, g.id)?;
     }
     Ok(games)
 }

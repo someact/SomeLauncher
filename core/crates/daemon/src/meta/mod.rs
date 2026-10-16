@@ -2,6 +2,8 @@
 //! SteamGridDB game; the user confirms every match from `search`'s candidates,
 //! except Steam's own games, which match themselves by app id.
 
+pub mod art;
+mod fetch;
 pub mod sgdb;
 pub mod steam_store;
 

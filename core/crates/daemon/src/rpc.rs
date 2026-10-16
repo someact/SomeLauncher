@@ -16,7 +16,7 @@ pub struct State {
     db_path: PathBuf,
     /// Where importers look for other launchers' files
     pub(crate) home: PathBuf,
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
     pub(crate) jobs: crate::jobs::Jobs,
     /// Running (or starting) games
     pub(crate) running: Mutex<std::collections::HashMap<i64, crate::session::Running>>,
@@ -197,7 +197,16 @@ impl State {
                 let db = self.db.lock().unwrap();
                 games::set_meta(&db, id, Some(&meta)).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
-                to_json(self.game(&db, id)?)
+                let game = self.game(&db, id)?;
+                drop(db);
+                // A new match brings new art; it arrives with `library.changed`
+                let state = self.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = state.refresh_art(id, true).await {
+                        tracing::warn!(id, "art: {e:#}");
+                    }
+                });
+                to_json(game)
             }
             "meta.unmatch" => {
                 let id = id_param(params)?;
@@ -206,6 +215,32 @@ impl State {
                 games::set_meta(&db, id, None).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
                 Ok(Value::Null)
+            }
+            "art.fetch" => match params.get("id") {
+                Some(_) => {
+                    let id = id_param(params)?;
+                    self.game(&self.db.lock().unwrap(), id)?;
+                    let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
+                    self.refresh_art(id, force).await.map_err(|e| Error::new("network", format!("{e:#}")))?;
+                    to_json(self.game(&self.db.lock().unwrap(), id)?)
+                }
+                None => {
+                    let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
+                    let id = self.fetch_all_art(force).map_err(|e| Error::new("busy", format!("{e:#}")))?;
+                    Ok(json!({ "id": id }))
+                }
+            },
+            "art.set" => {
+                let id = id_param(params)?;
+                let kind = art_kind(params)?;
+                self.game(&self.db.lock().unwrap(), id)?;
+                let origin = params.get("origin").and_then(Value::as_str);
+                self.set_art(id, kind, origin).await.map_err(|e| Error::new("bad_params", format!("{e:#}")))?;
+                to_json(self.game(&self.db.lock().unwrap(), id)?)
+            }
+            "art.options" => {
+                let game = self.game(&self.db.lock().unwrap(), id_param(params)?)?;
+                self.art_options(&game, art_kind(params)?).await.map_err(internal)
             }
             "library.import" => self.import(params).await,
             "library.scan" => to_json(self.scan().map_err(internal)?),
@@ -379,6 +414,11 @@ impl State {
     pub(crate) fn game(&self, db: &Connection, id: i64) -> Result<Game, Error> {
         games::get(db, id).map_err(internal)?.ok_or_else(|| not_found(id))
     }
+}
+
+fn art_kind(params: &Value) -> Result<&str, Error> {
+    let kind = str_param(params, "kind")?;
+    crate::meta::art::KINDS.into_iter().find(|k| *k == kind).ok_or_else(|| Error::new("bad_params", format!("no art kind {kind}")))
 }
 
 fn id_param(params: &Value) -> Result<i64, Error> {

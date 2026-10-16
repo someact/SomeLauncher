@@ -196,6 +196,22 @@ pub struct Game {
     /// What the game was matched to for art and metadata; None until matched
     #[serde(default)]
     pub meta: Option<Meta>,
+    /// Cached art files, sized for this screen
+    #[serde(default)]
+    pub art: Art,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Art {
+    /// Wide background (the game page, the library's hero row)
+    pub hero: Option<PathBuf>,
+    /// Portrait cover (library cards)
+    pub grid: Option<PathBuf>,
+    /// The title, transparent (over the hero)
+    pub logo: Option<PathBuf>,
+    /// Square icon (lists, desktop entries)
+    pub icon: Option<PathBuf>,
 }
 
 /// A metadata match (Phase 3) and what it brought.
@@ -232,6 +248,7 @@ impl Game {
             added: 0,
             sources: Vec::new(),
             meta: None,
+            art: Art::default(),
         }
     }
 }

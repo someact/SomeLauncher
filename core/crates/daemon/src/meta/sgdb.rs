@@ -54,6 +54,7 @@ pub async fn by_steam(http: &reqwest::Client, key: &str, appid: &str) -> Result<
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Image {
+    pub url: String,
     pub thumb: String,
 }
 
