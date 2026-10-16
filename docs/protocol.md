@@ -51,7 +51,7 @@ On connect the daemon first sends `hello`:
 | `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
 | `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner tags categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
-| `library.import` | `{sources?}`: a list of `steam`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
+| `library.import` | `{sources?}`: a list of `steam`, `lutris`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -89,3 +89,4 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 Re-importing is safe: a game seen before is updated (paths only where empty, playtime and last played to the larger value, the source's `data` replaced), and nothing the user edited is overwritten. A removed game is remembered and not imported again.
 
 - **steam**: every Steam install (native and flatpak) and library folder; tools (Proton, runtimes, redistributables) are skipped. Paths follow Steam: an uninstalled game keeps its entry with `installDir: null`. Source `data`: `{installed, buildid, stateFlags, library, proton, flatpak}`, where `proton` is Steam's own compatibility tool choice for the game (`null`: Steam's default).
+- **lutris**: installed games in `pga.db` (native and flatpak Lutris) with their `games/<configpath>.yml`. `wine` games become `proton` games (exe, prefix, `wine.version` as `runner.proton`, overrides, env, args, working dir), `linux` games `native`; Lutris' Steam games and other runners are skipped. `system.mangohud`/`gamemode` go to `runner.mangohud`/`runner.gamemode`. Source id: the slug; `data`: `{runner, configpath, coverart, banner}` (Lutris' own art, when present).

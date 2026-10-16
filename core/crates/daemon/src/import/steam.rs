@@ -25,11 +25,10 @@ pub fn roots(home: &Path) -> Vec<PathBuf> {
     ];
     let mut out: Vec<PathBuf> = Vec::new();
     for c in candidates {
-        if let Ok(p) = home.join(c).canonicalize() {
-            if p.join("steamapps").is_dir() && !out.contains(&p) {
+        if let Ok(p) = home.join(c).canonicalize()
+            && p.join("steamapps").is_dir() && !out.contains(&p) {
                 out.push(p);
             }
-        }
     }
     out
 }

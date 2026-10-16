@@ -133,7 +133,7 @@ impl State {
 
     /// Runs the importers; one failing does not stop the others.
     async fn import(&self, params: &Value) -> Result<Value, Error> {
-        let all = ["steam"];
+        let all = ["steam", "lutris"];
         let sources: Vec<String> = match params.get("sources") {
             Some(v) => parse(v)?,
             None => all.iter().map(|s| s.to_string()).collect(),
@@ -146,6 +146,7 @@ impl State {
         for source in &sources {
             let result = match source.as_str() {
                 "steam" => self.import_steam(&mut summary).await,
+                "lutris" => import::lutris::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
                 _ => unreachable!(),
             };
             if let Err(e) = result {
@@ -159,6 +160,13 @@ impl State {
         }
         tracing::info!(added = summary.added.len(), updated = summary.updated.len(), "imported {sources:?}");
         Ok(json!({ "added": summary.added, "updated": summary.updated, "errors": errors }))
+    }
+
+    fn apply(&self, found: Vec<import::Found>, summary: &mut import::Summary) -> anyhow::Result<()> {
+        let s = import::apply(&mut self.db.lock().unwrap(), found)?;
+        summary.added.extend(s.added);
+        summary.updated.extend(s.updated);
+        Ok(())
     }
 
     async fn import_steam(&self, summary: &mut import::Summary) -> anyhow::Result<()> {

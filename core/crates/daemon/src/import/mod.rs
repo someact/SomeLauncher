@@ -3,6 +3,7 @@
 //! updates its game, an entry whose game the user removed is skipped, and
 //! nothing the user edited is overwritten.
 
+pub mod lutris;
 pub mod steam;
 pub mod vdf;
 
