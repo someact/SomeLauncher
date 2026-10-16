@@ -5,6 +5,7 @@
 
 pub mod lutris;
 pub mod steam;
+pub mod twintail;
 pub mod vdf;
 
 use crate::games;
