@@ -34,7 +34,7 @@ pub struct Plan {
     pub post_exit: Option<String>,
 }
 
-fn which(name: &str) -> Option<PathBuf> {
+pub fn which(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH")?.to_str()?.split(':').map(|d| Path::new(d).join(name)).find(|p| p.is_file())
 }
 
@@ -90,8 +90,14 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
             env.insert("WINEPREFIX".into(), path_str(&prefix));
             env.insert("PROTONPATH".into(), path_str(&proton.dir));
             env.insert("GAMEID".into(), r.game_id.clone().unwrap_or_else(|| "umu-0".into()));
-            if !r.dll_overrides.is_empty() {
-                let overrides: Vec<String> = r.dll_overrides.iter().map(|(dll, mode)| format!("{dll}={mode}")).collect();
+            let mut overrides: Vec<String> = r.dll_overrides.iter().map(|(dll, mode)| format!("{dll}={mode}")).collect();
+            if r.needs_steam {
+                // Keep Proton's lsteamclient so the game reaches the real Steam client
+                env.insert("UMU_USE_STEAM".into(), "1".into());
+                let own = |dll: &str| r.dll_overrides.keys().any(|k| k.eq_ignore_ascii_case(dll));
+                overrides.extend(crate::needs_steam::OVERRIDES.iter().filter(|d| !own(d)).map(|d| format!("{d}=n,b")));
+            }
+            if !overrides.is_empty() {
                 env.insert("WINEDLLOVERRIDES".into(), overrides.join(";"));
             }
             vec![path_str(umu), path_str(exe()?)]
@@ -243,6 +249,16 @@ mod tests {
 
         g.runner.proton = Some("GE-Proton9-1".into());
         assert!(plan(&g, &ctx()).unwrap_err().to_string().contains("not installed"));
+    }
+
+    #[test]
+    fn needs_steam_keeps_lsteamclient_and_adds_the_loader_overrides() {
+        let mut g = game(Kind::Proton);
+        g.runner.needs_steam = true;
+        g.runner.dll_overrides.insert("winmm".into(), "n".into());
+        let p = plan(&g, &ctx()).unwrap();
+        assert_eq!(p.env["UMU_USE_STEAM"], "1");
+        assert_eq!(p.env["WINEDLLOVERRIDES"], "winmm=n;OnlineFix64=n,b;SteamOverlay64=n,b;StubDRM64=n,b;steam_api64=n,b");
     }
 
     #[test]

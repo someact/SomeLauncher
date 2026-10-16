@@ -1,10 +1,11 @@
 //! Method dispatch. Every method takes the request's params and returns a JSON
 //! result or a protocol error; events go to every client through `State::emit`.
 
-use crate::{games, import, launch, proton};
+use crate::{games, import, launch, needs_steam, proton};
+use anyhow::Context as _;
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use somelauncher_proto::game::{Game, GamePatch, NewGame, Source, SourceKind};
+use somelauncher_proto::game::{Game, GamePatch, Kind, NewGame, Source, SourceKind};
 use somelauncher_proto::{Error, Event, PROTOCOL, Reply, Request};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -321,6 +322,9 @@ impl State {
             games::save(&self.db.lock().unwrap(), &game).map_err(internal)?;
             self.emit("library.changed", json!({ "ids": [id] }));
         }
+        if game.runner.needs_steam && matches!(game.kind, Kind::Proton | Kind::Hoyo) {
+            self.prepare_needs_steam(&game, &plan).await.map_err(failed)?;
+        }
         let log_dir = somelauncher_proto::paths::state_dir().join("logs").join(id.to_string());
         std::fs::create_dir_all(&log_dir).map_err(|e| internal(e.into()))?;
         let log_path = log_dir.join(format!("{}.log", games::now()));
@@ -347,6 +351,20 @@ impl State {
             state.emit("game.state", json!({ "id": id, "state": "stopped" }));
         });
         Ok(json!({ "unit": unit, "log": log_path }))
+    }
+
+    /// LUTRIS_SETUP.md, automated: Steam running and logged in, its DLLs in the prefix, `steam_appid.txt`.
+    async fn prepare_needs_steam(&self, game: &Game, plan: &launch::Plan) -> anyhow::Result<()> {
+        if !needs_steam::status(&self.home).logged_in {
+            self.emit("game.state", json!({ "id": game.id, "state": "starting", "step": "steam" }));
+            needs_steam::ensure_running(&self.home).await?;
+        }
+        let prefix = plan.env.get("WINEPREFIX").map(PathBuf::from).context("the plan has no prefix")?;
+        let copied = needs_steam::prepare_prefix(&needs_steam::steam_root(&self.home)?, &prefix)?;
+        if !copied.is_empty() {
+            tracing::info!(id = game.id, ?copied, "copied Steam files into {}", prefix.display());
+        }
+        needs_steam::write_app_id(game)
     }
 
     pub(crate) fn setting_str(&self, key: &str) -> anyhow::Result<Option<String>> {

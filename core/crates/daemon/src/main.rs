@@ -8,9 +8,11 @@ mod guess;
 mod import;
 mod jobs;
 mod launch;
+mod needs_steam;
 mod proton;
 mod rpc;
 mod server;
+mod watch;
 
 use anyhow::{Context, Result};
 use somelauncher_proto::paths;

@@ -97,6 +97,9 @@ pub struct Runner {
     /// Start Steam first and set up the prefix for Steam-dependent games (2c)
     #[serde(skip_serializing_if = "is_false")]
     pub needs_steam: bool,
+    /// The app id written to `steam_appid.txt` for Needs Steam games; OnlineFix's `FakeAppId`, else 480, when unset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steam_app_id: Option<String>,
     /// A shell command run before the game starts (with the game's env); a failure stops the launch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pre_launch: Option<String>,

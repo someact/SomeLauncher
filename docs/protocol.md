@@ -75,7 +75,7 @@ On connect the daemon first sends `hello`:
 | `settings.changed` | `{key, value}` |
 | `download.progress` | `{id, label, done, total}` in bytes, a few times a second at most |
 | `download.done` | `{id, label, error?}` |
-| `game.state` | `{id, state, unit?}`: `running` (with its systemd unit) or `stopped` |
+| `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam to log in), `running` (with its systemd unit) or `stopped` |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
 
 ## Game
@@ -112,6 +112,7 @@ Every game runs in its own `systemd-run --user --scope` (unit `somelauncher-game
 - `proton` and `hoyo` games: `umu-run <exe> <args>` with `WINEPREFIX` (the game's prefix; a game without one gets `<prefixDir>/<name>`, created and saved on first launch), `PROTONPATH` (its Proton, else the default), `GAMEID` (`runner.gameId`, else `umu-0`) and `WINEDLLOVERRIDES` from `runner.dllOverrides`. The working dir is `runner.workingDir`, else the exe's folder.
 - `native` games: the exe (a non-executable `.sh` through `sh`) with its args.
 - `runner.env` is applied last and wins, except that a `WINEDLLOVERRIDES` there is joined to ours.
+- `runner.needsSteam` (`proton`/`hoyo` games whose co-op needs the real Steam client: OnlineFix, gbe_fork experimental): Steam is started (`steam -silent`, in its own scope) and awaited until logged in (`registry.vdf`, 3 minutes at most); `steamclient.dll`, `steamclient64.dll`, `GameOverlayRenderer64.dll`, `Steam.dll` and `steam.exe` (Steam's `SteamService.exe`) are copied, never linked, into the prefix's `Program Files (x86)/Steam`; `steam_appid.txt` is written next to the exe when missing (`runner.steamAppId`, else OnlineFix's `FakeAppId`, else 480); the env gets `UMU_USE_STEAM=1` and `n,b` overrides for `winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` unless the game sets them.
 - `runner.preLaunch` runs through `sh -c` before the game, with its env and working dir; if it fails the game does not start. `runner.postExit` runs after the game exits.
 
 ## Proton

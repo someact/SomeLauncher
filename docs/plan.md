@@ -74,7 +74,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 ## Phase 2: Runners and launch
 - [x] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings
 - [x] 2b. umu-run runner: prefix per game (default `<games>/Prefixes/<name>`), `GAMEID`/`UMU_ID`, env, args, DLL overrides, working dir, pre/post scripts
-- [ ] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test game: How to Fish (`<games>/How to Fish`, OnlineFix)
+- [x] 2c. "Needs Steam" option (OnlineFix/gbe_fork co-op): start Steam and wait for login, `UMU_USE_STEAM=1`, copy (not link) `steamclient(64).dll`, `GameOverlayRenderer64.dll`, `Steam.dll`, `steam.exe` into the prefix, write `steam_appid.txt`, preset overrides (`winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` = `n,b`). Test game: How to Fish (`<games>/How to Fish`, OnlineFix)
 - [ ] 2d. Steam runner: `steam -applaunch <id> <args>`, detect start and exit through the reaper process
 - [ ] 2e. Native runner (Linux executables, scripts)
 - [ ] 2f. Wrappers per game with global defaults: gamescope (size, refresh, FSR, HDR), MangoHud, gamemoderun, PRIME offload on hybrid GPUs
