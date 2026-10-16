@@ -36,6 +36,7 @@ On connect the daemon first sends `hello`:
 | `bad_request` | the line is not a request |
 | `unknown_method` | no such method |
 | `bad_params` | a param is missing or has the wrong type |
+| `not_found` | no game (or other object) with that id |
 | `internal` | the daemon failed (the message says why; the log has more) |
 
 ## Methods
@@ -45,6 +46,11 @@ On connect the daemon first sends `hello`:
 | `status` | — | `{version, protocol, pid, db}` |
 | `settings.get` | `{key?}` | the value (`null` when unset), or every setting as an object without `key` |
 | `settings.set` | `{key, value}` | `null`; a `null` value removes the key. Emits `settings.changed` |
+| `games.list` | `{includeHidden?}` | every game (below), by name; hidden ones only with `includeHidden: true` |
+| `games.get` | `{id}` | the game |
+| `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
+| `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner tags categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
+| `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -52,6 +58,23 @@ On connect the daemon first sends `hello`:
 | :--- | :--- |
 | `hello` | `{protocol, version}`, sent only on connect |
 | `settings.changed` | `{key, value}` |
+| `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
+
+## Game
+`core/crates/proto/src/game.rs`. Times are unix seconds, `playtime` is seconds.
+```json
+{
+  "id": 4, "name": "How to Fish", "kind": "proton",
+  "installDir": "/games/How to Fish", "exe": "/games/How to Fish/HowToFish.exe", "prefix": "/games/Prefixes/how-to-fish",
+  "runner": {"proton": "GE-Proton10-20", "args": [], "env": {}, "dllOverrides": {"winmm": "n,b"}, "workingDir": null, "gameId": "umu-0", "needsSteam": true},
+  "tags": ["co-op", "needs steam"], "categories": ["Co-op"],
+  "favorite": false, "hidden": false, "playtime": 5400, "lastPlayed": 1792137600, "added": 1792051200,
+  "sources": [{"source": "lutris", "sourceId": "how-to-fish", "data": {}}]
+}
+```
+- `kind`: `steam` (run through Steam), `proton` (umu-run), `native`, `hoyo`, `minecraft` (a Prism instance).
+- `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
+- `sources`: where the game was imported from (`steam`, `lutris`, `twintail`, `prism`, `manual`), with what that source said in `data`. A merged game (the same game from two sources) has several.
 
 ## Settings keys
 Daemon settings live in `library.db` and are changed only through `settings.set`. UI preferences (looks, motion) are not stored here: they live in `~/.config/somelauncher/config.json`, which the UI owns.

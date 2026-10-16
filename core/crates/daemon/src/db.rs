@@ -9,6 +9,31 @@ use std::path::Path;
 const MIGRATIONS: &[&str] = &[
     // 1: daemon settings (game folders, API keys, defaults), one JSON value per key
     "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    // 2: the library (proto::game). runner/tags/categories are JSON; times are unix seconds
+    "CREATE TABLE games (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        install_dir TEXT,
+        exe TEXT,
+        prefix TEXT,
+        runner TEXT NOT NULL DEFAULT '{}',
+        tags TEXT NOT NULL DEFAULT '[]',
+        categories TEXT NOT NULL DEFAULT '[]',
+        favorite INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        playtime INTEGER NOT NULL DEFAULT 0,
+        last_played INTEGER,
+        added INTEGER NOT NULL
+    );
+    CREATE TABLE game_sources (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        source TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        data TEXT,
+        PRIMARY KEY (source, source_id)
+    );
+    CREATE INDEX game_sources_game ON game_sources(game_id);",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

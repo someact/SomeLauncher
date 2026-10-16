@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 
+pub mod game;
+
 /// Bumped on any incompatible change; the daemon sends it in `hello`.
 pub const PROTOCOL: u32 = 1;
 
