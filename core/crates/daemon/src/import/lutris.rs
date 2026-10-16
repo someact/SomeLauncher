@@ -123,11 +123,8 @@ fn game(row: Row, config: Config, data_dir: &Path) -> Option<Found> {
         new.runner.proton = config.wine.version.filter(|v| !v.is_empty());
         new.runner.dll_overrides = config.wine.overrides.iter().filter_map(|(k, v)| Some((k.clone(), scalar(v)?))).collect();
     }
-    for (key, on) in [("mangohud", config.system.mangohud), ("gamemode", config.system.gamemode)] {
-        if let Some(on) = on {
-            new.runner.extra.insert(key.into(), json!(on));
-        }
-    }
+    new.runner.mangohud = config.system.mangohud;
+    new.runner.gamemode = config.system.gamemode;
     new.playtime = (row.hours * 3600.0).round() as i64;
     new.last_played = row.lastplayed;
 
@@ -209,7 +206,7 @@ mod tests {
         assert_eq!(pal.game.runner.args, ["-windowed", "-name=A B"]);
         assert_eq!(pal.game.runner.env["PROTON_NVIDIA_NVML"], "1");
         assert_eq!(pal.game.runner.dll_overrides["winmm"], "n,b");
-        assert_eq!(pal.game.runner.extra["mangohud"], json!(true));
+        assert_eq!(pal.game.runner.mangohud, Some(true));
         assert_eq!(pal.game.playtime, 1800);
         assert!(pal.source.data["coverart"].as_str().unwrap().ends_with("coverart/palworld.jpg"));
 

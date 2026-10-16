@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use somelauncher_proto::game::{Game, GamePatch, Kind, NewGame, Source, SourceKind};
 use somelauncher_proto::{Error, Event, PROTOCOL, Reply, Request};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 
@@ -306,6 +306,13 @@ impl State {
             default_proton: self.setting_str("defaultProton")?,
             umu: launch::find_umu(&self.home, self.setting_str("umuRun")?.as_deref()),
             prefix_root: launch::prefix_root(self.setting_str("prefixDir")?.as_deref(), &game_dirs),
+            defaults: crate::db::setting(&self.db.lock().unwrap(), "defaults")?
+                .map(serde_json::from_value)
+                .transpose()
+                .context("the defaults setting")?
+                .unwrap_or_default(),
+            offload: crate::gpu::offload(Path::new("/sys/class/drm")),
+            tools: launch::WRAPPERS.iter().filter(|t| launch::which(t).is_some()).map(|t| t.to_string()).collect(),
         })
     }
 

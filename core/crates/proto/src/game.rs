@@ -100,6 +100,18 @@ pub struct Runner {
     /// The app id written to `steam_appid.txt` for Needs Steam games; OnlineFix's `FakeAppId`, else 480, when unset
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steam_app_id: Option<String>,
+    /// MangoHud overlay; None: the global default
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mangohud: Option<bool>,
+    /// gamemoderun; None: the global default
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gamemode: Option<bool>,
+    /// gamescope settings, replacing the global ones whole; None: the global default
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gamescope: Option<Gamescope>,
+    /// Run on the discrete GPU of a hybrid laptop; None: the global default (on when hybrid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prime: Option<bool>,
     /// A shell command run before the game starts (with the game's env); a failure stops the launch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pre_launch: Option<String>,
@@ -113,6 +125,48 @@ pub struct Runner {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Gamescope {
+    pub enabled: bool,
+    /// Output size (`-W`/`-H`); the monitor's when unset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// The game's own resolution (`-w`/`-h`), lower than the output to upscale
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_height: Option<u32>,
+    /// `-r`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh: Option<u32>,
+    /// `-F fsr`
+    #[serde(skip_serializing_if = "is_false")]
+    pub fsr: bool,
+    /// `--hdr-enabled`
+    #[serde(skip_serializing_if = "is_false")]
+    pub hdr: bool,
+    /// `-f`
+    #[serde(skip_serializing_if = "is_false")]
+    pub fullscreen: bool,
+    /// Anything else, passed as is
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
+
+/// Global launch defaults (the `defaults` setting); a game's own runner fields win.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Defaults {
+    pub mangohud: bool,
+    pub gamemode: bool,
+    pub gamescope: Gamescope,
+    /// None: on when the machine is a hybrid-GPU laptop
+    pub prime: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -248,10 +302,20 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn imported_wrapper_flags_become_typed_fields() {
+        let r: Runner = serde_json::from_value(json!({ "mangohud": true, "gamescope": { "enabled": true, "width": 2560, "fsr": true } })).unwrap();
+        assert_eq!((r.mangohud, r.gamemode), (Some(true), None));
+        let gs = r.gamescope.unwrap();
+        assert!(gs.enabled && gs.fsr && !gs.hdr);
+        assert_eq!(gs.width, Some(2560));
+        assert!(r.extra.is_empty());
+    }
+
+    #[test]
     fn runner_keeps_unknown_options_and_skips_empty_ones() {
-        let r: Runner = serde_json::from_value(json!({ "proton": "GE-Proton10-20", "gamescope": { "w": 1920 } })).unwrap();
+        let r: Runner = serde_json::from_value(json!({ "proton": "GE-Proton10-20", "vkBasalt": { "cas": 0.5 } })).unwrap();
         assert_eq!(r.proton.as_deref(), Some("GE-Proton10-20"));
-        assert_eq!(serde_json::to_value(&r).unwrap(), json!({ "proton": "GE-Proton10-20", "gamescope": { "w": 1920 } }));
+        assert_eq!(serde_json::to_value(&r).unwrap(), json!({ "proton": "GE-Proton10-20", "vkBasalt": { "cas": 0.5 } }));
         assert_eq!(serde_json::to_value(Runner::default()).unwrap(), json!({}));
     }
 

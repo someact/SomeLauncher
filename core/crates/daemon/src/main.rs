@@ -4,6 +4,7 @@
 
 mod db;
 mod games;
+mod gpu;
 mod guess;
 mod import;
 mod jobs;

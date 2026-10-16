@@ -39,7 +39,7 @@ fn scan_db(db: &Path, out: &mut Vec<Found>) -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT i.id, m.filename, i.version, i.directory, i.runner_path, i.runner_prefix_path, i.env_vars, i.launch_args,
                 i.graphics_api, i.use_mangohud, i.use_gamemode, i.use_xxmi, i.use_fps_unlock, i.fps_value, i.audio_langs,
-                i.region_code, i.last_played_time, i.total_playtime, i.game_icon, i.game_background
+                i.region_code, i.last_played_time, i.total_playtime, i.game_icon, i.game_background, i.use_gamescope, i.gamescope_args
          FROM install i JOIN manifest m ON m.id = i.manifest_id",
     )?;
     let mut rows = stmt.query([])?;
@@ -64,10 +64,11 @@ fn scan_db(db: &Path, out: &mut Vec<Found>) -> Result<()> {
         game.runner.env = env(&text(6)?).collect();
         game.runner.args = shlex::split(&text(7)?).unwrap_or_default();
         game.runner.args.extend(shlex::split(&text(8)?).unwrap_or_default());
-        for (key, on) in [("mangohud", flag(9)?), ("gamemode", flag(10)?)] {
-            if on {
-                game.runner.extra.insert(key.into(), json!(true));
-            }
+        game.runner.mangohud = flag(9)?.then_some(true);
+        game.runner.gamemode = flag(10)?.then_some(true);
+        if flag(20)? {
+            let args = shlex::split(&text(21)?).unwrap_or_default();
+            game.runner.gamescope = Some(somelauncher_proto::game::Gamescope { enabled: true, args, ..Default::default() });
         }
         game.playtime = r.get::<_, Option<i64>>(17)?.unwrap_or(0);
         game.last_played = text(16)?.parse::<i64>().ok().filter(|t| *t > 0);
@@ -115,12 +116,12 @@ mod tests {
              CREATE TABLE install (id TEXT PRIMARY KEY, manifest_id TEXT, version TEXT, directory TEXT, runner_path TEXT,
                 runner_prefix_path TEXT, env_vars TEXT, launch_args TEXT, graphics_api TEXT, use_mangohud bool, use_gamemode bool,
                 use_xxmi bool, use_fps_unlock bool, fps_value TEXT, audio_langs TEXT, region_code TEXT, last_played_time TEXT,
-                total_playtime INTEGER, game_icon TEXT, game_background TEXT);
+                total_playtime INTEGER, game_icon TEXT, game_background TEXT, use_gamescope bool, gamescope_args TEXT);
              INSERT INTO manifest VALUES ('m1', 'hk4e_global.json'), ('m2', 'nap_global.json'), ('m3', 'hkrpg_global.json');",
         )
         .unwrap();
         let insert = "INSERT INTO install VALUES (?1, ?2, '7.1.0', ?3, '/runners/proton-cachyos', ?4, 'DXVK_HUD=fps; A=b', '-popupwindow',
-                      '-use-d3d12', 1, 0, 0, 0, '60', 'en-us,ja-jp', 'glb_official', '1792086960', 126738, '', '')";
+                      '-use-d3d12', 1, 0, 0, 0, '60', 'en-us,ja-jp', 'glb_official', '1792086960', 126738, '', '', 1, '-f --mangoapp')";
         let genshin_s = genshin.to_str().unwrap();
         db.execute(insert, ["g1", "m1", genshin_s, prefix.to_str().unwrap()]).unwrap();
         db.execute(insert, ["z1", "m2", "/nowhere/ZZZ", ""]).unwrap();
@@ -139,5 +140,7 @@ mod tests {
         assert_eq!((g.game.playtime, g.game.last_played), (126738, Some(1792086960)));
         assert_eq!(g.source.data["voice"], json!(["en-us", "ja-jp"]));
         assert_eq!(g.source.data["version"], "7.1.0");
+        assert_eq!((g.game.runner.mangohud, g.game.runner.gamemode), (Some(true), None));
+        assert_eq!(g.game.runner.gamescope.as_ref().unwrap().args, ["-f", "--mangoapp"]);
     }
 }

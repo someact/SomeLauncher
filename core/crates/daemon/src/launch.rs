@@ -5,7 +5,7 @@
 use crate::proton::{self, Proton};
 use anyhow::{Context as _, Result, anyhow, bail};
 use serde::Serialize;
-use somelauncher_proto::game::{Game, Kind};
+use somelauncher_proto::game::{Defaults, Game, Kind};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -17,7 +17,15 @@ pub struct Context {
     pub umu: Option<PathBuf>,
     /// Where new prefixes go (`<prefixDir>/<game name>`)
     pub prefix_root: PathBuf,
+    pub defaults: Defaults,
+    /// PRIME offload on a hybrid-GPU laptop
+    pub offload: Option<crate::gpu::Offload>,
+    /// Wrapper programs found on PATH (`gamescope`, `mangohud`, `gamemoderun`)
+    pub tools: std::collections::BTreeSet<String>,
 }
+
+/// The wrapper programs `tools` is filled with.
+pub const WRAPPERS: &[&str] = &["gamescope", "mangohud", "gamemoderun"];
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +139,7 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
         Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 8c)"),
     };
     argv.extend(r.args.iter().cloned());
+    let argv = wrap(game, ctx, argv, &mut env)?;
     // The game's own env wins; overrides it sets are joined with ours
     for (k, v) in &r.env {
         match (k.as_str(), env.get(k)) {
@@ -145,6 +154,69 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
     }
     let cwd = r.working_dir.clone().or_else(|| game.exe.as_ref().and_then(|e| e.parent().map(Path::to_path_buf)));
     Ok(Plan { argv, env, cwd, new_prefix, make_executable, pre_launch: r.pre_launch.clone(), post_exit: r.post_exit.clone() })
+}
+
+/// Wraps the command in the game's wrappers (or the defaults):
+/// `gamemoderun gamescope <opts> [--mangoapp] -- [mangohud] <command>`, and adds PRIME offload env.
+/// A wrapper turned on for this game but missing is an error; one on by default but missing is skipped.
+fn wrap(game: &Game, ctx: &Context, command: Vec<String>, env: &mut BTreeMap<String, String>) -> Result<Vec<String>> {
+    let (r, d) = (&game.runner, &ctx.defaults);
+    let available = |tool: &str, own: bool| -> Result<bool> {
+        if ctx.tools.contains(tool) {
+            return Ok(true);
+        }
+        if own {
+            bail!("{tool} is not installed");
+        }
+        tracing::warn!("{tool} is on by default but not installed; skipped");
+        Ok(false)
+    };
+    let mangohud = r.mangohud.unwrap_or(d.mangohud) && available("mangohud", r.mangohud == Some(true))?;
+    let gamemode = r.gamemode.unwrap_or(d.gamemode) && available("gamemoderun", r.gamemode == Some(true))?;
+    let gs = r.gamescope.as_ref().unwrap_or(&d.gamescope);
+    let gamescope = gs.enabled && available("gamescope", r.gamescope.as_ref().is_some_and(|g| g.enabled))?;
+    if let Some(offload) = ctx.offload
+        && r.prime.or(d.prime).unwrap_or(true)
+    {
+        env.extend(offload.env().iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    }
+
+    let mut argv = Vec::new();
+    if gamemode {
+        argv.push("gamemoderun".to_string());
+    }
+    if gamescope {
+        argv.push("gamescope".into());
+        let mut opt = |flag: &str, v: Option<u32>| {
+            if let Some(v) = v {
+                argv.extend([flag.to_string(), v.to_string()]);
+            }
+        };
+        opt("-W", gs.width);
+        opt("-H", gs.height);
+        opt("-w", gs.game_width);
+        opt("-h", gs.game_height);
+        opt("-r", gs.refresh);
+        if gs.fsr {
+            argv.extend(["-F".into(), "fsr".into()]);
+        }
+        if gs.hdr {
+            argv.push("--hdr-enabled".into());
+        }
+        if gs.fullscreen {
+            argv.push("-f".into());
+        }
+        argv.extend(gs.args.iter().cloned());
+        // Inside gamescope its own overlay replaces the mangohud wrapper
+        if mangohud {
+            argv.push("--mangoapp".into());
+        }
+        argv.push("--".into());
+    } else if mangohud {
+        argv.push("mangohud".into());
+    }
+    argv.extend(command);
+    Ok(argv)
 }
 
 /// How a Linux program starts: directly when it can; a script without the exec
@@ -275,6 +347,9 @@ mod tests {
             default_proton: None,
             umu: Some("/usr/bin/umu-run".into()),
             prefix_root: "/g/Prefixes".into(),
+            defaults: Defaults::default(),
+            offload: None,
+            tools: WRAPPERS.iter().map(|t| t.to_string()).collect(),
         }
     }
 
@@ -304,6 +379,58 @@ mod tests {
 
         g.runner.proton = Some("GE-Proton9-1".into());
         assert!(plan(&g, &ctx()).unwrap_err().to_string().contains("not installed"));
+    }
+
+    #[test]
+    fn wrappers_come_from_the_game_or_the_defaults() {
+        use somelauncher_proto::game::Gamescope;
+        let mut g = game(Kind::Proton);
+        g.prefix = Some("/p".into());
+        let mut c = ctx();
+        c.defaults.gamemode = true;
+        c.defaults.mangohud = true;
+        let p = plan(&g, &c).unwrap();
+        assert_eq!(p.argv[..3], ["gamemoderun", "mangohud", "/usr/bin/umu-run"]);
+
+        g.runner.mangohud = Some(false);
+        g.runner.gamescope = Some(Gamescope {
+            enabled: true,
+            width: Some(2560),
+            height: Some(1440),
+            game_width: Some(1920),
+            game_height: Some(1080),
+            refresh: Some(165),
+            fsr: true,
+            hdr: true,
+            fullscreen: true,
+            args: vec!["--adaptive-sync".into()],
+        });
+        let p = plan(&g, &c).unwrap();
+        let expected = "gamemoderun gamescope -W 2560 -H 1440 -w 1920 -h 1080 -r 165 -F fsr --hdr-enabled -f --adaptive-sync -- /usr/bin/umu-run";
+        assert_eq!(p.argv[..p.argv.len() - 1].join(" "), expected);
+        g.runner.mangohud = None;
+        assert!(plan(&g, &c).unwrap().argv.contains(&"--mangoapp".to_string()));
+
+        // Missing tools: an error when the game asks, skipped when only the default does
+        c.tools.clear();
+        assert!(plan(&g, &c).unwrap_err().to_string().contains("gamescope is not installed"));
+        g.runner.gamescope = None;
+        assert_eq!(plan(&g, &c).unwrap().argv[0], "/usr/bin/umu-run");
+    }
+
+    #[test]
+    fn prime_offload_only_on_hybrid_machines() {
+        let mut g = game(Kind::Native);
+        g.exe = Some("/bin/sh".into());
+        let mut c = ctx();
+        assert!(plan(&g, &c).unwrap().env.is_empty());
+        c.offload = Some(crate::gpu::Offload::Nvidia);
+        assert_eq!(plan(&g, &c).unwrap().env["__NV_PRIME_RENDER_OFFLOAD"], "1");
+        g.runner.prime = Some(false);
+        assert!(plan(&g, &c).unwrap().env.is_empty());
+        g.runner.env.insert("__GLX_VENDOR_LIBRARY_NAME".into(), "mesa".into());
+        g.runner.prime = None;
+        assert_eq!(plan(&g, &c).unwrap().env["__GLX_VENDOR_LIBRARY_NAME"], "mesa", "the game's env wins");
     }
 
     #[test]
