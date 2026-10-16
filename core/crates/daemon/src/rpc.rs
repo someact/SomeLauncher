@@ -104,6 +104,7 @@ impl State {
                 let id = games::insert(&db, &new).map_err(internal)?;
                 games::set_source(&db, id, &Source { source: SourceKind::Manual, source_id: id.to_string(), data: Value::Null })
                     .map_err(internal)?;
+                crate::meta::tags::retag(&db, id).map_err(internal)?;
                 let game = self.game(&db, id)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
                 to_json(game)
@@ -117,6 +118,8 @@ impl State {
                 let mut game = self.game(&db, id)?;
                 patch.apply(&mut game);
                 games::save(&db, &game).map_err(internal)?;
+                crate::meta::tags::retag(&db, id).map_err(internal)?;
+                let game = self.game(&db, id)?;
                 desktop::refresh(&paths::applications_dir(), &game, &desktop::cli()).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
                 to_json(game)
@@ -199,13 +202,8 @@ impl State {
                 self.emit("library.changed", json!({ "ids": [id] }));
                 let game = self.game(&db, id)?;
                 drop(db);
-                // A new match brings new art; it arrives with `library.changed`
-                let state = self.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = state.refresh_art(id, true).await {
-                        tracing::warn!(id, "art: {e:#}");
-                    }
-                });
+                // Details, tags and art follow with `library.changed`
+                self.matched(id);
                 to_json(game)
             }
             "meta.unmatch" => {
@@ -213,8 +211,21 @@ impl State {
                 let db = self.db.lock().unwrap();
                 self.game(&db, id)?;
                 games::set_meta(&db, id, None).map_err(internal)?;
+                crate::meta::tags::retag(&db, id).map_err(internal)?;
                 self.emit("library.changed", json!({ "ids": [id] }));
                 Ok(Value::Null)
+            }
+            "meta.refresh" => {
+                let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
+                match params.get("id") {
+                    Some(_) => {
+                        let id = id_param(params)?;
+                        self.game(&self.db.lock().unwrap(), id)?;
+                        self.refresh_meta(id, force).await.map_err(|e| Error::new("network", format!("{e:#}")))?;
+                        to_json(self.game(&self.db.lock().unwrap(), id)?)
+                    }
+                    None => Ok(json!({ "id": self.refresh_all_meta(force).map_err(|e| Error::new("busy", format!("{e:#}")))? })),
+                }
             }
             "art.fetch" => match params.get("id") {
                 Some(_) => {
@@ -293,7 +304,7 @@ impl State {
     }
 
     /// Runs the importers; one failing does not stop the others.
-    async fn import(&self, params: &Value) -> Result<Value, Error> {
+    async fn import(self: &Arc<Self>, params: &Value) -> Result<Value, Error> {
         let all = ["steam", "lutris", "twintail", "prism"];
         let sources: Vec<String> = match params.get("sources") {
             Some(v) => parse(v)?,
@@ -319,7 +330,16 @@ impl State {
         }
         // Steam games need no confirmation: their app id is the match
         let matched = crate::meta::match_steam_games(&self.db.lock().unwrap()).map_err(internal)?;
+        let new_matches = !matched.is_empty();
         summary.updated.extend(matched.into_iter().filter(|id| !summary.added.contains(id)));
+        for id in summary.ids() {
+            crate::meta::tags::retag(&self.db.lock().unwrap(), id).map_err(internal)?;
+        }
+        // Details and art for new games follow in the background; a running job is fine
+        if new_matches || !summary.added.is_empty() {
+            let _ = self.refresh_all_meta(false);
+            let _ = self.fetch_all_art(false);
+        }
         let ids = summary.ids();
         if !ids.is_empty() {
             self.emit("library.changed", json!({ "ids": ids }));

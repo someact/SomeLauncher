@@ -41,6 +41,52 @@ pub async fn search(http: &reqwest::Client, term: &str) -> Result<Vec<Hit>> {
 pub struct Details {
     #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub short_description: String,
+    #[serde(default)]
+    pub genres: Vec<Described>,
+    #[serde(default)]
+    pub categories: Vec<Described>,
+    #[serde(default)]
+    pub developers: Vec<String>,
+    #[serde(default)]
+    pub publishers: Vec<String>,
+    #[serde(default)]
+    pub release_date: Option<Release>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Described {
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Release {
+    #[serde(default)]
+    pub date: String,
+}
+
+/// Steam's user tags for an app, most used first (SteamSpy; 1 request a second at most).
+pub async fn user_tags(http: &reqwest::Client, appid: &str) -> Result<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Body {
+        #[serde(default)]
+        tags: serde_json::Value,
+    }
+    let body: Body = http
+        .get("https://steamspy.com/api.php")
+        .query(&[("request", "appdetails"), ("appid", appid)])
+        .send()
+        .await?
+        .error_for_status()
+        .context("SteamSpy")?
+        .json()
+        .await?;
+    // `{"Horror": 812, …}`, or `[]` when it has none
+    let mut tags: Vec<(String, i64)> =
+        body.tags.as_object().into_iter().flatten().map(|(k, v)| (k.clone(), v.as_i64().unwrap_or(0))).collect();
+    tags.sort_by_key(|t| std::cmp::Reverse(t.1));
+    Ok(tags.into_iter().map(|t| t.0).collect())
 }
 
 /// App details, or None when Steam has none (delisted, region locked).

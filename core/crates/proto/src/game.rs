@@ -180,9 +180,9 @@ pub struct Game {
     /// The wine prefix (proton and hoyo games)
     pub prefix: Option<PathBuf>,
     pub runner: Runner,
-    /// Automatic labels (genres, `co-op`, `needs steam`, …)
+    /// Automatic labels (genres, Steam tags, `co-op`, `needs steam`, …), recomputed; not editable
     pub tags: Vec<String>,
-    /// User-facing library rows
+    /// Library rows the user set; when empty the library uses `meta.categories`
     pub categories: Vec<String>,
     pub favorite: bool,
     pub hidden: bool,
@@ -226,6 +226,29 @@ pub struct Meta {
     pub steam_appid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sgdb_id: Option<String>,
+    /// Store details (Steam), filled by `meta.refresh`
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genres: Vec<String>,
+    /// Steam's user tags, most used first (SteamSpy)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steam_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub developers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub publishers: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub release: String,
+    /// Steam's feature list (`Online Co-op`, `Steam Achievements`, …)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
+    /// Library rows for the game when the user has set none
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+    /// Unix seconds of the last details fetch; None: never
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetched: Option<i64>,
 }
 
 impl Game {
@@ -308,7 +331,6 @@ pub struct GamePatch {
     #[serde(default, deserialize_with = "present")]
     pub prefix: Option<Option<PathBuf>>,
     pub runner: Option<Runner>,
-    pub tags: Option<Vec<String>>,
     pub categories: Option<Vec<String>>,
     pub favorite: Option<bool>,
     pub hidden: Option<bool>,
@@ -338,9 +360,6 @@ impl GamePatch {
         }
         if let Some(v) = self.runner {
             g.runner = v;
-        }
-        if let Some(v) = self.tags {
-            g.tags = v;
         }
         if let Some(v) = self.categories {
             g.categories = v;

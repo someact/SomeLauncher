@@ -98,6 +98,66 @@ impl State {
         Ok(())
     }
 
+    /// Store details and Steam tags for a matched game (when missing, or always with
+    /// `force`), then its tags; tells everyone when anything changed.
+    pub(crate) async fn refresh_meta(&self, id: i64, force: bool) -> Result<()> {
+        let Some(game) = crate::games::get(&self.db.lock().unwrap(), id)? else { return Ok(()) };
+        let mut changed = false;
+        if let Some(mut meta) = game.meta.clone()
+            && (force || meta.fetched.is_none())
+        {
+            super::details(&self.http, &mut meta).await?;
+            crate::games::set_meta(&self.db.lock().unwrap(), id, Some(&meta))?;
+            changed = true;
+        }
+        changed |= super::tags::retag(&self.db.lock().unwrap(), id)?;
+        if changed {
+            self.emit("library.changed", json!({ "ids": [id] }));
+        }
+        Ok(())
+    }
+
+    /// Details for every matched game that has none (all with `force`), as a background
+    /// job; slow on purpose (SteamSpy allows a request a second).
+    pub(crate) fn refresh_all_meta(self: &Arc<Self>, force: bool) -> Result<String> {
+        let id = "meta".to_string();
+        let state = Arc::downgrade(self);
+        crate::jobs::spawn(self, &id, "Game details", move |progress| async move {
+            let Some(s) = state.upgrade() else { return Ok(()) };
+            let games: Vec<i64> = crate::games::list(&s.db.lock().unwrap(), true)?
+                .into_iter()
+                .filter(|g| g.meta.as_ref().is_some_and(|m| force || m.fetched.is_none()))
+                .map(|g| g.id)
+                .collect();
+            drop(s);
+            let total = games.len() as u64;
+            for (i, game) in games.into_iter().enumerate() {
+                let Some(s) = state.upgrade() else { return Ok(()) };
+                if let Err(e) = s.refresh_meta(game, force).await {
+                    tracing::warn!(game, "details: {e:#}");
+                }
+                progress.update(i as u64 + 1, total);
+                drop(s);
+                tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+            }
+            Ok(())
+        })?;
+        Ok(id)
+    }
+
+    /// After a new match: details, tags and art, in the background.
+    pub(crate) fn matched(self: &Arc<Self>, id: i64) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = state.refresh_meta(id, true).await {
+                tracing::warn!(id, "details: {e:#}");
+            }
+            if let Err(e) = state.refresh_art(id, true).await {
+                tracing::warn!(id, "art: {e:#}");
+            }
+        });
+    }
+
     /// The automatic choices for one kind, to pick another from.
     pub(crate) async fn art_options(&self, game: &Game, kind: &str) -> Result<Value> {
         let key = self.setting_str("steamGridDbKey")?;

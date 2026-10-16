@@ -6,6 +6,7 @@ pub mod art;
 mod fetch;
 pub mod sgdb;
 pub mod steam_store;
+pub mod tags;
 
 use crate::guess::normalized;
 use anyhow::{Result, bail};
@@ -172,7 +173,7 @@ pub async fn resolve(http: &reqwest::Client, key: Option<&str>, source: &str, id
                 Some(key) => sgdb::by_steam(http, key, id).await.ok().map(|g| g.id.to_string()),
                 None => None,
             };
-            Ok(Meta { source: "steam".into(), source_id: id.into(), name: d.name, steam_appid: Some(id.into()), sgdb_id })
+            Ok(Meta { source: "steam".into(), source_id: id.into(), name: d.name, steam_appid: Some(id.into()), sgdb_id, ..Default::default() })
         }
         "steamgriddb" => {
             let Some(key) = key else { bail!("set a SteamGridDB API key first") };
@@ -180,10 +181,33 @@ pub async fn resolve(http: &reqwest::Client, key: Option<&str>, source: &str, id
             // The same game on Steam, by its exact name, for genres and tags
             let hits = steam_store::search(http, &game.name).await.unwrap_or_default();
             let steam_appid = hits.iter().find(|h| normalized(&h.name) == normalized(&game.name)).map(|h| h.id.to_string());
-            Ok(Meta { source: "steamgriddb".into(), source_id: id.into(), name: game.name, steam_appid, sgdb_id: Some(id.into()) })
+            Ok(Meta { source: "steamgriddb".into(), source_id: id.into(), name: game.name, steam_appid, sgdb_id: Some(id.into()), ..Default::default() })
         }
         _ => bail!("no metadata source {source}"),
     }
+}
+
+/// Fills a match with the Steam store's details and Steam's user tags.
+pub async fn details(http: &reqwest::Client, meta: &mut Meta) -> Result<()> {
+    let Some(appid) = meta.steam_appid.clone() else {
+        meta.fetched = Some(crate::games::now());
+        return Ok(());
+    };
+    if let Some(d) = steam_store::details(http, &appid).await? {
+        meta.description = d.short_description;
+        meta.genres = d.genres.into_iter().map(|g| g.description).collect();
+        meta.features = d.categories.into_iter().map(|c| c.description).collect();
+        meta.developers = d.developers;
+        meta.publishers = d.publishers;
+        meta.release = d.release_date.map(|r| r.date).unwrap_or_default();
+    }
+    match steam_store::user_tags(http, &appid).await {
+        Ok(tags) => meta.steam_tags = tags,
+        Err(e) => tracing::debug!(appid, "SteamSpy: {e:#}"),
+    }
+    meta.categories = tags::categories(meta);
+    meta.fetched = Some(crate::games::now());
+    Ok(())
 }
 
 /// Steam games match themselves: their app id is known, nothing to confirm.
@@ -195,7 +219,13 @@ pub fn match_steam_games(conn: &Connection) -> Result<Vec<i64>> {
             continue;
         }
         let Some(s) = g.sources.iter().find(|s| s.source == SourceKind::Steam) else { continue };
-        let meta = Meta { source: "steam".into(), source_id: s.source_id.clone(), name: g.name.clone(), steam_appid: Some(s.source_id.clone()), sgdb_id: None };
+        let meta = Meta {
+            source: "steam".into(),
+            source_id: s.source_id.clone(),
+            name: g.name.clone(),
+            steam_appid: Some(s.source_id.clone()),
+            ..Default::default()
+        };
         crate::games::set_meta(conn, g.id, Some(&meta))?;
         changed.push(g.id);
     }
