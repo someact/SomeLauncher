@@ -51,7 +51,9 @@ On connect the daemon first sends `hello`:
 | `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
 | `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner tags categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
+| `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
 | `library.import` | `{sources?}`: a list of `steam`, `lutris`, `twintail`, `prism`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
+| `library.scan` | — | a `games.guess` result for each folder directly under `gameDirs` that holds an executable and no known game, minus `scanIgnored`. Nothing is added |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -83,6 +85,8 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | key | value |
 | :--- | :--- |
 | `steamApiKey` | Steam Web API key; with it `library.import` adds owned games that are not installed |
+| `gameDirs` | folders whose subfolders `library.scan` looks at |
+| `scanIgnored` | folders `library.scan` no longer suggests (the user dismissed them) |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Imports

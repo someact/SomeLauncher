@@ -122,7 +122,13 @@ impl State {
                 self.emit("library.changed", json!({ "ids": [id], "removed": true }));
                 Ok(Value::Null)
             }
+            "games.guess" => {
+                let path = PathBuf::from(str_param(params, "path")?);
+                let guess = crate::guess::guess(&path).ok_or_else(|| Error::new("not_found", format!("{} does not exist", path.display())))?;
+                to_json(guess)
+            }
             "library.import" => self.import(params).await,
+            "library.scan" => to_json(self.scan().map_err(internal)?),
             "shutdown" => {
                 let _ = self.shutdown.send(true);
                 Ok(Value::Null)
@@ -190,6 +196,39 @@ impl State {
         summary.added.extend(s.added);
         summary.updated.extend(s.updated.into_iter().chain(gone));
         Ok(())
+    }
+
+    /// Folders under the `gameDirs` setting that hold a game the library does not have yet.
+    fn scan(&self) -> anyhow::Result<Vec<crate::guess::Guess>> {
+        let (dirs, ignored, known) = {
+            let db = self.db.lock().unwrap();
+            let list = |key| -> anyhow::Result<Vec<PathBuf>> {
+                Ok(crate::db::setting(&db, key)?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default())
+            };
+            let known: Vec<PathBuf> =
+                games::list(&db, true)?.into_iter().flat_map(|g| [g.install_dir, g.exe, g.prefix]).flatten().collect();
+            (list("gameDirs")?, list("scanIgnored")?, known)
+        };
+        let mut out = Vec::new();
+        for dir in dirs {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let mut folders: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+            folders.sort();
+            for folder in folders {
+                let name = folder.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                // A folder a game lives in, or one inside a game's folder, is taken
+                let taken = known.iter().any(|k| k.starts_with(&folder) || folder.starts_with(k));
+                if taken || name.starts_with('.') || name == "prefixes" || ignored.contains(&folder) {
+                    continue;
+                }
+                // Only scripts (build, setup) is most likely not a game
+                let guess = crate::guess::guess(&folder);
+                if let Some(g) = guess.filter(|g| g.exe.as_deref().is_some_and(|e| !crate::guess::is_script(e))) {
+                    out.push(g);
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn game(&self, db: &Connection, id: i64) -> Result<Game, Error> {
