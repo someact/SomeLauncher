@@ -10,6 +10,7 @@ mod guess;
 mod import;
 mod jobs;
 mod launch;
+mod meta;
 mod needs_steam;
 mod proton;
 mod rpc;

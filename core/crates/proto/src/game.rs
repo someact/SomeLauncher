@@ -193,6 +193,47 @@ pub struct Game {
     /// Unix seconds
     pub added: i64,
     pub sources: Vec<Source>,
+    /// What the game was matched to for art and metadata; None until matched
+    #[serde(default)]
+    pub meta: Option<Meta>,
+}
+
+/// A metadata match (Phase 3) and what it brought.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Meta {
+    /// `steam` or `steamgriddb`: where the user picked it
+    pub source: String,
+    pub source_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_appid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sgdb_id: Option<String>,
+}
+
+impl Game {
+    /// A game as `games.add` stores it, before it was played or imported.
+    pub fn new(id: i64, n: NewGame) -> Self {
+        Self {
+            id,
+            name: n.name,
+            kind: n.kind,
+            install_dir: n.install_dir,
+            exe: n.exe,
+            prefix: n.prefix,
+            runner: n.runner,
+            tags: n.tags,
+            categories: n.categories,
+            favorite: false,
+            hidden: false,
+            playtime: n.playtime,
+            last_played: n.last_played,
+            added: 0,
+            sources: Vec::new(),
+            meta: None,
+        }
+    }
 }
 
 /// A game before it has an id: what `games.add` and the importers hand in.

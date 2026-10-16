@@ -47,6 +47,8 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX sessions_game ON sessions(game_id);
     CREATE INDEX sessions_open ON sessions(ended) WHERE ended IS NULL;",
+    // 5: metadata matches (proto::game::Meta as JSON)
+    "CREATE TABLE meta (game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE, data TEXT NOT NULL);",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

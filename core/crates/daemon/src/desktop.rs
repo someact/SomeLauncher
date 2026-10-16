@@ -75,24 +75,7 @@ mod tests {
     use somelauncher_proto::game::{Kind, NewGame};
 
     fn game(name: &str) -> Game {
-        let n = NewGame::new(name, Kind::Proton);
-        Game {
-            id: 7,
-            name: n.name,
-            kind: n.kind,
-            install_dir: None,
-            exe: None,
-            prefix: None,
-            runner: n.runner,
-            tags: vec![],
-            categories: vec![],
-            favorite: false,
-            hidden: false,
-            playtime: 0,
-            last_played: None,
-            added: 0,
-            sources: vec![],
-        }
+        Game::new(7, NewGame::new(name, Kind::Proton))
     }
 
     #[test]

@@ -40,6 +40,7 @@ On connect the daemon first sends `hello`:
 | `launch_failed` | the game could not be started (the message says why) |
 | `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
+| `network` | a web service failed or refused (the message says which) |
 | `internal` | the daemon failed (the message says why; the log has more) |
 
 ## Methods
@@ -63,6 +64,9 @@ On connect the daemon first sends `hello`:
 | `games.duplicates` | — | groups of games with the same name (ignoring case and punctuation) that are separate entries: copies from different installs, for the user to merge or keep |
 | `games.merge` | `{id, into}` | the merged game: `id`'s sources move to `into`, empty fields are filled, tags and categories joined, playtimes added; `id` is deleted. Emits `library.changed` for both |
 | `games.guess` | `{path}`: an exe or a folder | `{name, kind, installDir, exe, candidates}`: a guess for the add wizard, nothing is added. `candidates` are every plausible executable, best first. `not_found` when the path does not exist |
+| `meta.search` | `{id?, query?}`: a game (its name is the query) and/or a query | candidates `[{source, id, name, year?, cover?, thumb?, reason?}]`, best first: the ids the game names itself first (`reason`: `Steam library`, `OnlineFix.ini`, `steam_appid.txt`), then the Steam store's and SteamGridDB's (with `steamGridDbKey`) hits by name. `cover` is a portrait image URL to confirm with, `thumb` a fallback. Error `network` |
+| `meta.match` | `{id, source, sourceId}`: a candidate | the game with its `meta` set. The other source's id is filled in when found (a Steam app's SteamGridDB id, a SteamGridDB game's Steam app by its exact name). Emits `library.changed` |
+| `meta.unmatch` | `{id}` | `null`; the game has no match again |
 | `library.import` | `{sources?}`: a list of `steam`, `lutris`, `twintail`, `prism`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
 | `library.scan` | — | a `games.guess` result for each folder directly under `gameDirs` that holds an executable and no known game, minus `scanIgnored`. Nothing is added |
 | `proton.list` | — | `{builds, default}`: every Proton build `{name, internal, dir, source}` (`source`: `user`, `system`, `steam`, `lutris`, `twintail`) and the default's `name` |
@@ -92,11 +96,13 @@ On connect the daemon first sends `hello`:
   "runner": {"proton": "GE-Proton10-20", "args": [], "env": {}, "dllOverrides": {"winmm": "n,b"}, "workingDir": null, "gameId": "umu-0", "needsSteam": true},
   "tags": ["co-op", "needs steam"], "categories": ["Co-op"],
   "favorite": false, "hidden": false, "playtime": 5400, "lastPlayed": 1792137600, "added": 1792051200,
-  "sources": [{"source": "lutris", "sourceId": "how-to-fish", "data": {}}]
+  "sources": [{"source": "lutris", "sourceId": "how-to-fish", "data": {}}],
+  "meta": {"source": "steam", "sourceId": "4001890", "name": "How to Fish", "steamAppid": "4001890", "sgdbId": "5432101"}
 }
 ```
 - `kind`: `steam` (run through Steam), `proton` (umu-run), `native`, `hoyo`, `minecraft` (a Prism instance).
 - `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
+- `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import.
 - `sources`: where the game was imported from (`steam`, `lutris`, `twintail`, `prism`, `manual`), with what that source said in `data`. A merged game (the same game from two sources) has several.
 
 ## Settings keys
@@ -104,6 +110,7 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 
 | key | value |
 | :--- | :--- |
+| `steamGridDbKey` | SteamGridDB API key (steamgriddb.com → Preferences → API); without it only the Steam store is searched |
 | `steamApiKey` | Steam Web API key; with it `library.import` adds owned games that are not installed |
 | `defaults` | launch defaults for every game: `{mangohud, gamemode, gamescope, prime}` (see Launching); a game's own runner fields win |
 | `gameDirs` | folders whose subfolders `library.scan` looks at |

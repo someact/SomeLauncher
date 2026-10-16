@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, Row, params};
-use somelauncher_proto::game::{Game, Kind, NewGame, Source, SourceKind};
+use somelauncher_proto::game::{Game, Kind, Meta, NewGame, Source, SourceKind};
 use std::path::PathBuf;
 
 const COLUMNS: &str =
@@ -41,7 +41,24 @@ fn from_row(row: &Row) -> rusqlite::Result<Game> {
         last_played: row.get(12)?,
         added: row.get(13)?,
         sources: Vec::new(),
+        meta: None,
     })
+}
+
+fn meta(conn: &Connection, id: i64) -> Result<Option<Meta>> {
+    let raw: Option<String> = conn.prepare_cached("SELECT data FROM meta WHERE game_id = ?1")?.query_row([id], |r| r.get(0)).optional()?;
+    Ok(raw.map(|d| serde_json::from_str(&d)).transpose()?)
+}
+
+pub fn set_meta(conn: &Connection, id: i64, meta: Option<&Meta>) -> Result<()> {
+    match meta {
+        Some(m) => conn.execute(
+            "INSERT INTO meta (game_id, data) VALUES (?1, ?2) ON CONFLICT(game_id) DO UPDATE SET data = excluded.data",
+            params![id, serde_json::to_string(m)?],
+        )?,
+        None => conn.execute("DELETE FROM meta WHERE game_id = ?1", [id])?,
+    };
+    Ok(())
 }
 
 fn sources(conn: &Connection, id: i64) -> Result<Vec<Source>> {
@@ -63,6 +80,7 @@ pub fn get(conn: &Connection, id: i64) -> Result<Option<Game>> {
         .optional()?;
     let Some(mut game) = game else { return Ok(None) };
     game.sources = sources(conn, id)?;
+    game.meta = meta(conn, id)?;
     Ok(Some(game))
 }
 
@@ -74,6 +92,7 @@ pub fn list(conn: &Connection, include_hidden: bool) -> Result<Vec<Game>> {
     let mut games = stmt.query_map([include_hidden], from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
     for g in &mut games {
         g.sources = sources(conn, g.id)?;
+        g.meta = meta(conn, g.id)?;
     }
     Ok(games)
 }
@@ -178,6 +197,9 @@ pub fn merge(conn: &Connection, from: i64, into: i64) -> Result<Game> {
     g.last_played = g.last_played.max(src.last_played);
     save(conn, &g)?;
     set_played(conn, into, g.playtime, g.last_played)?;
+    if g.meta.is_none() && src.meta.is_some() {
+        set_meta(conn, into, src.meta.as_ref())?;
+    }
     conn.execute("UPDATE game_sources SET game_id = ?2 WHERE game_id = ?1", params![from, into])?;
     conn.execute("DELETE FROM games WHERE id = ?1", [from])?;
     let merged = get(conn, into)?.expect("the game was just saved");

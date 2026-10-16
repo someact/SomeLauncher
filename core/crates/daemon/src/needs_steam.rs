@@ -77,24 +77,9 @@ mod tests {
     use somelauncher_proto::game::{Kind, NewGame};
 
     fn game(exe: &Path) -> Game {
-        let n = NewGame::new("How to Fish", Kind::Proton);
-        Game {
-            id: 1,
-            name: n.name,
-            kind: n.kind,
-            install_dir: None,
-            exe: Some(exe.into()),
-            prefix: None,
-            runner: n.runner,
-            tags: vec![],
-            categories: vec![],
-            favorite: false,
-            hidden: false,
-            playtime: 0,
-            last_played: None,
-            added: 0,
-            sources: vec![],
-        }
+        let mut n = NewGame::new("How to Fish", Kind::Proton);
+        n.exe = Some(exe.into());
+        Game::new(1, n)
     }
 
     #[test]

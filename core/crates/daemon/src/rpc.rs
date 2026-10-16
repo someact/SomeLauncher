@@ -176,6 +176,37 @@ impl State {
                 let guess = crate::guess::guess(&path).ok_or_else(|| Error::new("not_found", format!("{} does not exist", path.display())))?;
                 to_json(guess)
             }
+            "meta.search" => {
+                let game = match params.get("id") {
+                    Some(_) => Some(self.game(&self.db.lock().unwrap(), id_param(params)?)?),
+                    None => None,
+                };
+                let query = params.get("query").and_then(Value::as_str).map(String::from);
+                let query = query.or_else(|| game.as_ref().map(|g| g.name.clone())).ok_or_else(|| Error::new("bad_params", "give `id` or `query`"))?;
+                let key = self.setting_str("steamGridDbKey").map_err(internal)?;
+                let found = crate::meta::search(&self.http, key.as_deref(), &query, game.as_ref()).await;
+                to_json(found.map_err(|e| Error::new("network", format!("{e:#}")))?)
+            }
+            "meta.match" => {
+                let id = id_param(params)?;
+                let (source, source_id) = (str_param(params, "source")?, str_param(params, "sourceId")?);
+                self.game(&self.db.lock().unwrap(), id)?;
+                let key = self.setting_str("steamGridDbKey").map_err(internal)?;
+                let meta = crate::meta::resolve(&self.http, key.as_deref(), source, source_id).await;
+                let meta = meta.map_err(|e| Error::new("network", format!("{e:#}")))?;
+                let db = self.db.lock().unwrap();
+                games::set_meta(&db, id, Some(&meta)).map_err(internal)?;
+                self.emit("library.changed", json!({ "ids": [id] }));
+                to_json(self.game(&db, id)?)
+            }
+            "meta.unmatch" => {
+                let id = id_param(params)?;
+                let db = self.db.lock().unwrap();
+                self.game(&db, id)?;
+                games::set_meta(&db, id, None).map_err(internal)?;
+                self.emit("library.changed", json!({ "ids": [id] }));
+                Ok(Value::Null)
+            }
             "library.import" => self.import(params).await,
             "library.scan" => to_json(self.scan().map_err(internal)?),
             "proton.list" => {
@@ -251,6 +282,9 @@ impl State {
                 errors.insert(source.clone(), json!(format!("{e:#}")));
             }
         }
+        // Steam games need no confirmation: their app id is the match
+        let matched = crate::meta::match_steam_games(&self.db.lock().unwrap()).map_err(internal)?;
+        summary.updated.extend(matched.into_iter().filter(|id| !summary.added.contains(id)));
         let ids = summary.ids();
         if !ids.is_empty() {
             self.emit("library.changed", json!({ "ids": ids }));

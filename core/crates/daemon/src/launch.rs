@@ -318,26 +318,11 @@ pub fn spawn(plan: &Plan, unit: &str, description: &str, log: &std::fs::File) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use somelauncher_proto::game::Runner;
 
     fn game(kind: Kind) -> Game {
-        Game {
-            id: 1,
-            name: "How to Fish".into(),
-            kind,
-            install_dir: None,
-            exe: Some("/g/How to Fish/How to Fish.exe".into()),
-            prefix: None,
-            runner: Runner::default(),
-            tags: vec![],
-            categories: vec![],
-            favorite: false,
-            hidden: false,
-            playtime: 0,
-            last_played: None,
-            added: 0,
-            sources: vec![],
-        }
+        let mut n = somelauncher_proto::game::NewGame::new("How to Fish", kind);
+        n.exe = Some("/g/How to Fish/How to Fish.exe".into());
+        Game::new(1, n)
     }
 
     fn ctx() -> Context {

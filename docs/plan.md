@@ -82,7 +82,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [~] 2h. CLI `somelauncher play|list|stop` and `.desktop` entries per game (optional) — the CLI's no-daemon fallback starts the daemon (as the UI does) instead of launching games itself, so launching has one code path
 
 ## Phase 3: Metadata and artwork
-- [ ] 3a. Match by name (SteamGridDB search + Steam store search), show the top results with covers, and the user confirms or picks another (Lutris-style)
+- [x] 3a. Match by name (SteamGridDB search + Steam store search), show the top results with covers, and the user confirms or picks another (Lutris-style)
 - [ ] 3b. Art set per game: hero, grid (portrait), logo, icon; the user can replace any image with a local file
 - [ ] 3c. Auto tags and categories from Steam genres and tags (+ our own: `co-op`, `needs steam`, `gacha`, `modded`)
 - [ ] 3d. Image cache sized for the screen (as SomeShell does with wallpapers) so Qt never holds a 4K decode
