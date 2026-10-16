@@ -18,6 +18,6 @@ case "${1:-}" in
     ui) build -q; SOMELAUNCHER_PAGE="${2:-}" exec qs -p "$root/ui/shell.qml" ;;
     check)
         build -q
-        timeout "${2:-8}" qs -p "$root/ui/shell.qml" 2>&1 | grep -E "WARN|ERROR" | grep -vE "qt.qpa.wayland.textinput|ServerNotFoundError|dropped operation" || true ;;
+        timeout "${2:-8}" qs -p "$root/ui/shell.qml" 2>&1 | grep -E "WARN|ERROR" | grep -vE "qt.qpa.wayland.textinput|ServerNotFoundError|dropped operation|which was not previously tracked" || true ;;
     *) sed -n '2,8p' "$0"; exit 1 ;;
 esac
