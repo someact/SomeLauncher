@@ -72,7 +72,7 @@ async fn client(stream: UnixStream, state: Arc<State>) {
                     continue;
                 }
                 let reply = match serde_json::from_str::<Request>(&line) {
-                    Ok(req) => state.handle(req),
+                    Ok(req) => state.handle(req).await,
                     Err(e) => Reply::err(0, Error::new("bad_request", e.to_string())),
                 };
                 if tx.send(Message::Reply(reply)).is_err() {

@@ -51,6 +51,7 @@ On connect the daemon first sends `hello`:
 | `games.add` | a new game: `{name, kind, installDir?, exe?, prefix?, runner?, tags?, categories?, playtime?, lastPlayed?}` | the game, with a `manual` source. Emits `library.changed` |
 | `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner tags categories favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
+| `library.import` | `{sources?}`: a list of `steam`; all of them when left out | `{added, updated, errors}`: game ids, and a message per importer that failed (the others still run). Emits `library.changed` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -78,3 +79,13 @@ On connect the daemon first sends `hello`:
 
 ## Settings keys
 Daemon settings live in `library.db` and are changed only through `settings.set`. UI preferences (looks, motion) are not stored here: they live in `~/.config/somelauncher/config.json`, which the UI owns.
+
+| key | value |
+| :--- | :--- |
+| `steamApiKey` | Steam Web API key; with it `library.import` adds owned games that are not installed |
+| `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
+
+## Imports
+Re-importing is safe: a game seen before is updated (paths only where empty, playtime and last played to the larger value, the source's `data` replaced), and nothing the user edited is overwritten. A removed game is remembered and not imported again.
+
+- **steam**: every Steam install (native and flatpak) and library folder; tools (Proton, runtimes, redistributables) are skipped. Paths follow Steam: an uninstalled game keeps its entry with `installDir: null`. Source `data`: `{installed, buildid, stateFlags, library, proton, flatpak}`, where `proton` is Steam's own compatibility tool choice for the game (`null`: Steam's default).

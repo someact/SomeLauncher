@@ -4,6 +4,7 @@
 
 mod db;
 mod games;
+mod import;
 mod rpc;
 mod server;
 

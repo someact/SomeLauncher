@@ -34,6 +34,8 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (source, source_id)
     );
     CREATE INDEX game_sources_game ON game_sources(game_id);",
+    // 3: source entries whose game the user removed, so importers skip them
+    "CREATE TABLE ignored_sources (source TEXT NOT NULL, source_id TEXT NOT NULL, PRIMARY KEY (source, source_id));",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

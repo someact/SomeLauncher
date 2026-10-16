@@ -122,7 +122,18 @@ pub fn save(conn: &Connection, g: &Game) -> Result<()> {
     Ok(())
 }
 
+pub fn set_played(conn: &Connection, id: i64, playtime: i64, last_played: Option<i64>) -> Result<()> {
+    conn.execute("UPDATE games SET playtime = ?2, last_played = ?3 WHERE id = ?1", params![id, playtime, last_played])?;
+    Ok(())
+}
+
+/// Deletes the game. Its imported sources are remembered so a re-import does not bring it back.
 pub fn remove(conn: &Connection, id: i64) -> Result<bool> {
+    conn.execute(
+        "INSERT OR IGNORE INTO ignored_sources (source, source_id)
+         SELECT source, source_id FROM game_sources WHERE game_id = ?1 AND source != 'manual'",
+        [id],
+    )?;
     Ok(conn.execute("DELETE FROM games WHERE id = ?1", [id])? == 1)
 }
 
