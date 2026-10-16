@@ -127,6 +127,73 @@ pub fn set_played(conn: &Connection, id: i64, playtime: i64, last_played: Option
     Ok(())
 }
 
+/// A game already in the library at the same place: the same exe, or the same folder and kind.
+pub fn same_install(conn: &Connection, g: &NewGame) -> Result<Option<i64>> {
+    let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let exe = g.exe.as_deref().map(canon);
+    let dir = g.install_dir.as_deref().map(canon);
+    if exe.is_none() && dir.is_none() {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare_cached("SELECT id, kind, install_dir, exe FROM games WHERE install_dir IS NOT NULL OR exe IS NOT NULL")?;
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        let (other_dir, other_exe) = (r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?);
+        let same_exe = exe.is_some() && other_exe.map(|e| canon(e.as_ref())) == exe;
+        let same_dir = dir.is_some() && r.get::<_, String>(1)? == g.kind.as_str() && other_dir.map(|d| canon(d.as_ref())) == dir;
+        if same_exe || same_dir {
+            return Ok(Some(r.get(0)?));
+        }
+    }
+    Ok(None)
+}
+
+/// Folds `from` into `into`: its sources move over, empty fields are filled, tags
+/// and categories are joined and the playtimes added (two copies played apart).
+pub fn merge(conn: &Connection, from: i64, into: i64) -> Result<Game> {
+    anyhow::ensure!(from != into, "a game cannot be merged into itself");
+    let tx = conn.unchecked_transaction()?;
+    let conn = &*tx;
+    let src = get(conn, from)?.with_context(|| format!("no game {from}"))?;
+    let mut g = get(conn, into)?.with_context(|| format!("no game {into}"))?;
+    g.install_dir = g.install_dir.or(src.install_dir);
+    g.exe = g.exe.or(src.exe);
+    g.prefix = g.prefix.or(src.prefix);
+    if g.runner == Default::default() {
+        g.runner = src.runner;
+    }
+    for t in src.tags {
+        if !g.tags.contains(&t) {
+            g.tags.push(t);
+        }
+    }
+    for c in src.categories {
+        if !g.categories.contains(&c) {
+            g.categories.push(c);
+        }
+    }
+    g.favorite |= src.favorite;
+    g.hidden &= src.hidden;
+    g.playtime += src.playtime;
+    g.last_played = g.last_played.max(src.last_played);
+    save(conn, &g)?;
+    set_played(conn, into, g.playtime, g.last_played)?;
+    conn.execute("UPDATE game_sources SET game_id = ?2 WHERE game_id = ?1", params![from, into])?;
+    conn.execute("DELETE FROM games WHERE id = ?1", [from])?;
+    let merged = get(conn, into)?.expect("the game was just saved");
+    tx.commit()?;
+    Ok(merged)
+}
+
+/// Games that look like the same game (same name, ignoring case and punctuation), in groups.
+pub fn duplicates(conn: &Connection) -> Result<Vec<Vec<Game>>> {
+    let mut groups: std::collections::BTreeMap<String, Vec<Game>> = Default::default();
+    for g in list(conn, true)? {
+        groups.entry(crate::guess::normalized(&g.name)).or_default().push(g);
+    }
+    Ok(groups.into_values().filter(|g| g.len() > 1).collect())
+}
+
 /// Deletes the game. Its imported sources are remembered so a re-import does not bring it back.
 pub fn remove(conn: &Connection, id: i64) -> Result<bool> {
     conn.execute(
@@ -197,6 +264,29 @@ mod tests {
 
         assert!(remove(&conn, id).unwrap());
         assert_eq!(by_source(&conn, SourceKind::Lutris, "valheim").unwrap(), None, "sources go with the game");
+    }
+
+    #[test]
+    fn merge_moves_sources_and_adds_playtime() {
+        let conn = test_db();
+        let mut a = NewGame::new("Palworld", Kind::Steam);
+        a.playtime = 100;
+        let a = insert(&conn, &a).unwrap();
+        set_source(&conn, a, &Source { source: SourceKind::Steam, source_id: "1623730".into(), data: json!(null) }).unwrap();
+        let mut b = NewGame::new("PALWORLD", Kind::Proton);
+        b.playtime = 50;
+        b.tags = vec!["survival".into()];
+        b.prefix = Some("/p/pal".into());
+        let b = insert(&conn, &b).unwrap();
+        set_source(&conn, b, &Source { source: SourceKind::Lutris, source_id: "palworld".into(), data: json!(null) }).unwrap();
+
+        assert_eq!(duplicates(&conn).unwrap().len(), 1);
+        let g = merge(&conn, b, a).unwrap();
+        assert_eq!((g.name.as_str(), g.kind, g.playtime, g.sources.len()), ("Palworld", Kind::Steam, 150, 2));
+        assert_eq!((g.tags, g.prefix.unwrap().to_str()), (vec!["survival".to_string()], Some("/p/pal")));
+        assert!(get(&conn, b).unwrap().is_none());
+        assert!(duplicates(&conn).unwrap().is_empty());
+        assert!(merge(&conn, a, a).is_err());
     }
 
     #[test]

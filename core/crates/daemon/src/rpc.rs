@@ -122,6 +122,21 @@ impl State {
                 self.emit("library.changed", json!({ "ids": [id], "removed": true }));
                 Ok(Value::Null)
             }
+            "games.merge" => {
+                let (from, into) = (id_param(params)?, params.get("into").and_then(Value::as_i64));
+                let into = into.ok_or_else(|| Error::new("bad_params", "missing integer `into`"))?;
+                if from == into {
+                    return Err(Error::new("bad_params", "a game cannot be merged into itself"));
+                }
+                let db = self.db.lock().unwrap();
+                self.game(&db, from)?;
+                self.game(&db, into)?;
+                let game = games::merge(&db, from, into).map_err(internal)?;
+                self.emit("library.changed", json!({ "ids": [into] }));
+                self.emit("library.changed", json!({ "ids": [from], "removed": true }));
+                to_json(game)
+            }
+            "games.duplicates" => to_json(games::duplicates(&self.db.lock().unwrap()).map_err(internal)?),
             "games.guess" => {
                 let path = PathBuf::from(str_param(params, "path")?);
                 let guess = crate::guess::guess(&path).ok_or_else(|| Error::new("not_found", format!("{} does not exist", path.display())))?;

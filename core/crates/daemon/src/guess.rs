@@ -73,7 +73,8 @@ const TAGS: &[&str] = &[
 const MAX_DEPTH: usize = 4;
 const MAX_ENTRIES: usize = 4000;
 
-fn normalized(s: &str) -> String {
+/// Lowercase letters and digits only: how names are compared.
+pub fn normalized(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric())
         .flat_map(char::to_lowercase)

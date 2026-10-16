@@ -62,14 +62,14 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 0e. Design system: Theme (SomeShell's matugen colors when present, else our own matugen template or defaults), Glass, springs, buttons and cards. Copy the needed SomeShell components rather than importing them; note the source commit — no own matugen template yet: without SomeShell the fallback palette is used until 9a installs one
 - [x] 0f. Dev commands documented in CLAUDE.md (build, run the daemon in the foreground, run the UI from the repo, tests)
 
-## Phase 1: Library
+## Phase 1: Library ✅
 - [x] 1a. Game model: id, kind (`steam`, `proton`, `native`, `hoyo`, `minecraft`), paths, runner settings, tags, categories, favorite, hidden, playtime, last played
 - [x] 1b. Steam import: `libraryfolders.vdf` + `appmanifest_*.acf` (installed), owned games through the Web API when a key is set; Steam's own Proton choice is shown read-only
 - [x] 1c. Lutris import: `games/*.yml` + `pga.db` → exe, prefix, wine version, env, DLL overrides, args
 - [x] 1d. Twintail import: find Genshin/ZZZ install folders, prefixes and runner versions, so nothing is downloaded again
 - [x] 1e. Prism import: instances dir, `instance.cfg`, `mmc-pack.json`, `instgroups.json`
 - [~] 1f. Manual add: pick an exe or folder, guess the name from the folder, then confirm art (3a) and runner; a library scan for new folders under chosen game dirs — daemon side: `games.guess` (name, folder, main exe, kind) + `games.add`, and `library.scan`; the wizard itself is 4e and art confirmation 3a
-- [ ] 1g. Duplicates (the same game from two sources) are merged, keeping one entry
+- [~] 1g. Duplicates (the same game from two sources) are merged, keeping one entry — automatic when it is the same install (same exe, or same folder and kind); the same name from different installs (e.g. a Steam copy and a Lutris copy) is two real copies, so `games.duplicates` lists them and `games.merge` merges on the user's say
 
 ## Phase 2: Runners and launch
 - [ ] 2a. Proton discovery: `compatibilitytools.d` (user and system), Steam's Proton, umu's `UMU-Proton`; the default is the newest GE-Proton; download GE-Proton/cachyos from GitHub releases in settings

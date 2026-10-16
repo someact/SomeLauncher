@@ -53,11 +53,23 @@ pub fn apply(conn: &mut Connection, found: Vec<Found>) -> Result<Summary> {
         if is_ignored(&tx, kind, sid)? {
             continue;
         }
-        let Some(id) = games::by_source(&tx, kind, sid)? else {
-            let id = games::insert(&tx, &f.game)?;
-            games::set_source(&tx, id, &f.source)?;
-            summary.added.push(id);
-            continue;
+        let mut linked = false;
+        let id = match games::by_source(&tx, kind, sid)? {
+            Some(id) => id,
+            // The same install already came from another source (or was added by hand): one entry, two sources
+            None => match games::same_install(&tx, &f.game)? {
+                Some(id) => {
+                    games::set_source(&tx, id, &f.source)?;
+                    linked = true;
+                    id
+                }
+                None => {
+                    let id = games::insert(&tx, &f.game)?;
+                    games::set_source(&tx, id, &f.source)?;
+                    summary.added.push(id);
+                    continue;
+                }
+            },
         };
         let Some(old) = games::get(&tx, id)? else { continue };
         let mut g = old.clone();
@@ -78,6 +90,8 @@ pub fn apply(conn: &mut Connection, found: Vec<Found>) -> Result<Summary> {
             games::save(&tx, &g)?;
             games::set_played(&tx, id, g.playtime, g.last_played)?;
             games::set_source(&tx, id, &f.source)?;
+        }
+        if g != old || linked {
             summary.updated.push(id);
         }
     }
@@ -159,6 +173,28 @@ mod tests {
         let id = apply(&mut conn, vec![found("1", "/a", 0, true)]).unwrap().added[0];
         games::remove(&conn, id).unwrap();
         assert!(apply(&mut conn, vec![found("1", "/a", 0, true)]).unwrap().added.is_empty());
+    }
+
+    #[test]
+    fn the_same_install_from_two_sources_is_one_game() {
+        let mut conn = games::test_db();
+        let mut manual = NewGame::new("How to Fish", Kind::Proton);
+        manual.exe = Some("/g/fish/fish.exe".into());
+        let id = games::insert(&conn, &manual).unwrap();
+
+        let mut lutris = found("how-to-fish", "/g/fish", 600, false);
+        lutris.source.source = SourceKind::Lutris;
+        lutris.game.kind = Kind::Proton;
+        lutris.game.exe = Some("/g/fish/fish.exe".into());
+        lutris.game.prefix = Some("/p/fish".into());
+        assert_eq!(apply(&mut conn, vec![lutris]).unwrap().updated, [id]);
+        let g = games::get(&conn, id).unwrap().unwrap();
+        assert_eq!((g.sources.len(), g.playtime, g.prefix.unwrap().to_str()), (1, 600, Some("/p/fish")));
+
+        // Another copy of the same game elsewhere stays its own entry
+        let mut steam = found("1", "/steam/fish", 0, true);
+        steam.game.exe = None;
+        assert_eq!(apply(&mut conn, vec![steam]).unwrap().added.len(), 1);
     }
 
     #[test]
