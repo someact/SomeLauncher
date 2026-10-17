@@ -292,7 +292,11 @@ Item {
         InstanceHeader {
             id: header
             width: parent.width
-            height: Math.max(neededHeight, Math.min(340, parent.height * 0.4))
+            // Full on Overview; the lists and settings get the room on the other tabs
+            height: root.tab === "overview" ? Math.max(neededHeight, Math.min(340, parent.height * 0.4)) : neededHeight
+            Behavior on height {
+                Spring { preset: "snappy" }
+            }
             game: root.game
             // A picture the user picked (the game's hero art), else the newest screenshot
             image: Library.art(root.game, "hero") || (root.info && root.info.screenshots.length ? Paths.url(root.info.screenshots[0].path) : "")
@@ -351,12 +355,11 @@ Item {
                 active: visible
                 game: root.game
             }
-            Placeholder {
+            InstanceSettings {
                 anchors.fill: parent
                 visible: root.tab === "settings"
-                icon: "tune"
-                title: "Settings"
-                note: "Coming next (Phase 8e)"
+                active: visible
+                game: root.game
             }
         }
 

@@ -5,6 +5,7 @@
 
 pub mod mods;
 pub mod nbt;
+pub mod settings;
 
 use crate::rpc::{State, internal};
 use anyhow::{Context as _, Result};
@@ -175,6 +176,29 @@ pub fn find_java(game_dir: &Path) -> Option<i32> {
     })
 }
 
+/// Running Prism Launcher processes (native or flatpak), by their executable's name.
+pub fn prism_pids() -> Vec<i32> {
+    std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let pid: i32 = e.file_name().to_str()?.parse().ok()?;
+            let exe = std::fs::read_link(e.path().join("exe")).ok()?;
+            (exe.file_name()? == "prismlauncher").then_some(pid)
+        })
+        .collect()
+}
+
+/// Any Minecraft running from an instance under Prism's instances folders
+fn any_minecraft(home: &Path) -> bool {
+    let roots: Vec<PathBuf> = crate::import::prism::installs(home).into_iter().filter_map(|(_, i)| std::fs::canonicalize(i).ok()).collect();
+    std::fs::read_dir("/proc").into_iter().flatten().flatten().any(|e| {
+        let is_java = std::fs::read_link(e.path().join("exe")).ok().and_then(|x| x.file_name().map(|n| n.to_string_lossy().starts_with("java"))).unwrap_or(false);
+        is_java && std::fs::read_link(e.path().join("cwd")).is_ok_and(|cwd| roots.iter().any(|r| cwd.starts_with(r)))
+    })
+}
+
 /// What `games.launch` runs for an instance: `prismlauncher -l <id>`, with the
 /// chosen account (`-a`, when Prism still has it) and a world or server to join.
 pub fn plan(game: &Game, home: &Path, account: Option<&str>) -> Result<crate::launch::Plan> {
@@ -307,6 +331,44 @@ impl State {
         }
         let to = mods::set_enabled(&inst.game_dir.join("mods"), file, on).map_err(|e| Error::new("bad_params", format!("{e:#}")))?;
         Ok(json!({ "file": to }))
+    }
+
+    /// `minecraft.settings {id}`: the instance's settings, Prism's defaults, the Java installs and the RAM
+    pub(crate) fn minecraft_settings(&self, params: &Value) -> Result<Value, Error> {
+        let (game, inst) = self.instance(params)?;
+        let root = prism_root(&self.home, Some(&game));
+        Ok(json!({
+            "values": settings::read(&inst.dir.join("instance.cfg")),
+            "defaults": root.as_deref().map(settings::defaults).unwrap_or_default(),
+            "javas": settings::javas(root.as_deref(), Path::new("/usr/lib/jvm")),
+            "ramMb": settings::ram_mb(),
+            // Prism holds instance settings in memory while it runs: ours apply once it restarts
+            "prismRunning": !prism_pids().is_empty(),
+        }))
+    }
+
+    /// `minecraft.setSettings {id, values}`: keys set (`null` removes one), then as `minecraft.settings`
+    pub(crate) fn minecraft_set_settings(&self, params: &Value) -> Result<Value, Error> {
+        let (game, inst) = self.instance(params)?;
+        let values = params["values"].as_object().ok_or_else(|| Error::new("bad_params", "missing object `values`"))?;
+        settings::write(&inst.dir.join("instance.cfg"), values).map_err(|e| Error::new("bad_params", format!("{e:#}")))?;
+        tracing::info!(id = game.id, keys = ?values.keys().collect::<Vec<_>>(), "changed {}'s Prism settings", game.name);
+        self.minecraft_settings(params)
+    }
+
+    /// `minecraft.closePrism`: asks a running Prism to quit (SIGTERM), so it reads the instance settings
+    /// again on its next start. Refused while any Minecraft runs from it
+    pub(crate) fn minecraft_close_prism(&self) -> Result<Value, Error> {
+        if any_minecraft(&self.home) {
+            return Err(Error::new("busy", "Minecraft is running: close it first"));
+        }
+        let pids = prism_pids();
+        for &pid in &pids {
+            // SAFETY: kill only sends a signal
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+        tracing::info!(?pids, "asked Prism to quit");
+        Ok(json!({ "closed": pids.len() }))
     }
 
     /// `minecraft.prism {id?}`: Prism's window, on that instance when given

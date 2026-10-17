@@ -251,7 +251,16 @@ Item {
                     SettingRow {
                         visible: !!root.game && root.game.kind === "minecraft"
                         title: "Prism instance"
-                        note: "Its settings live in Prism for now (Phase 8 brings them here)."
+                        note: "Its memory, Java, mods and worlds are on the Minecraft page; Prism runs it with its own settings."
+                        SmallButton {
+                            text: "Open"
+                            onClicked: {
+                                const id = root.game.id;
+                                root.closeRequested();
+                                Nav.closeGame();
+                                Nav.showInstance(id);
+                            }
+                        }
                     }
                     SettingRow {
                         visible: root.wine
