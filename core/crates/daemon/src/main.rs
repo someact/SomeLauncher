@@ -2,6 +2,7 @@
 //! Clients (the QML UI, the `somelauncher` CLI) talk to it over a unix socket
 //! with JSON lines (docs/protocol.md). Closing a client never stops its work.
 
+mod achievements;
 mod db;
 mod desktop;
 mod games;
@@ -55,6 +56,10 @@ async fn main() -> Result<()> {
     }
     if let Err(e) = state.check_builds_if_stale() {
         tracing::warn!("checking for updates: {e:#}");
+    }
+    // Achievements: Steam's cache on disk, the Web API when its last pass is old
+    if let Err(e) = state.refresh_all_achievements(false) {
+        tracing::warn!("achievements: {e:#}");
     }
     // Hoyo games: is a new version out (in the background, the network may be slow)
     let hoyo = state.clone();

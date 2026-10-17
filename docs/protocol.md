@@ -95,6 +95,8 @@ On connect the daemon first sends `hello`:
 | `hoyo.preload` | `{id}` | `{id}` of the job: the next version's patches fetched into `<dir>/.somelauncher/preload-<version>/`; the game is not touched until its update |
 | `hoyo.repair` | `{id}` | `{id}` of the job: every file md5-checked against the installed version's manifest (progress through the check), then the bad ones fetched again and swapped in |
 | `hoyo.check` | `{force?}` | ids of the games whose `build.latest` changed: HoYoPlay's current version for every installed Hoyo game (`updateAvailable` follows). Done when the daemon starts, by the UI when it opens, and by `games.launch` |
+| `achievements.list` | `{id}` | the game's achievements in their source's order: `[{apiName, name, description, hidden, icon, iconGray, unlockedAt}]` (`unlockedAt`: unix seconds, `0` unlocked at an unknown time, `null` locked; `icon`/`iconGray` URLs). See Achievements |
+| `achievements.refresh` | `{id?, force?}` | with `id`: the game, its list read again (the Web API when a key is set); without: `{id}` of a background job for every Steam game (`force`, the default, uses the Web API even when its last pass is recent). Also done at daemon start (the Web API at most every 12 hours) and when a game's session ends |
 | `xxmi.status` | `{force?}` | `{dir, installed, latest, outdated, error, packages}`: the versions installed and the latest releases (`loader`, `libs`, `gimi`, `zzmi`; asked at most hourly, `force` asks again; `latest` is `null` offline, with `error`), the keys behind, and per package `{ready, mods, count, twintail}` (`mods` its mods folder, `twintail` whether Twintail has mods for it). See XXMI |
 | `xxmi.update` | — | `{id: "xxmi"}`: a job fetching what is missing or behind (`download.*` events, `done`/`total` in bytes). Error `busy` |
 | `xxmi.mods` | `{biz}` | `{package, dir, mods}`: the game's mods folder and its mods `{name, folder, enabled, preview, path}` by name; `preview` is a picture named `preview*`, `thumb*` or `cover*` in the mod's folder, or `null` |
@@ -111,6 +113,7 @@ On connect the daemon first sends `hello`:
 | `download.done` | `{id, label, error?}` |
 | `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam), `running` (with its systemd unit, or `steam:<appid>`, and `since`) or `stopped` (with `error` when it failed to start) |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
+| `achievement.unlocked` | `{id, game, achievement, source}`: an achievement found newly unlocked by a refresh (`achievement` as in `achievements.list`); not sent when a game's list is first filled |
 | `power.changed` | `{gaming}`: gaming mode went on (the first game started) or off (the last one ended) |
 
 ## Game
@@ -130,6 +133,7 @@ On connect the daemon first sends `hello`:
 - `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
 - `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Each is sized for this machine so Qt never holds a 4K decode: heroes at most the widest connected monitor's width (from `/sys/class/drm`), grids 600x900, logos 1280x640, icons 256x256, never enlarged; JPEG, or PNG when transparent. When the widest monitor changes, the next daemon start makes them all again from their origins. Automatic art comes, best first, from HoYoPlay (Hoyo games: the current launcher background, the logo and icon), SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
 - `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import. After an import, details and art for new games are fetched by background jobs. A match brings, in the background, `description`, `genres`, `features` (Steam's feature list), `steamTags` (Steam's user tags from SteamSpy), `developers`, `publishers`, `release`, and `categories`: the automatic library rows (`Co-op` for co-op games, then the main genre).
+- `achievements`: `{unlocked, total, source, last?}` when the game has a list (`source`: `steam`, `steamApi`, `gbe`; `last` the newest unlock), else left out; the list itself is `achievements.list`.
 - `tags`: automatic, recomputed whenever what they come from changes: `co-op`, `multiplayer`, `needs steam` (runner), `gacha` (hoyo), `modded` (`runner.xxmi` on, or a Minecraft mod loader), the genres and Steam's top 6 user tags; lowercase.
 - `build`: `{recorded?, latest?, latestTime?, checked?, installed?, updateAvailable}`. Hoyo games: `installed` is the version read from the files (`hoyo` source). Steam games: `installed` is the build in Steam's manifest, `latest` the latest public build (api.steamcmd.net, a mirror of Steam's PICS), and `updateAvailable` is true when they differ or Steam itself has an update waiting. Other games: `recorded` is the build the user notes (`recordedBuild` in `games.update`).
 - `categories`: the user's library rows; while empty the library uses `meta.categories`.
@@ -153,6 +157,7 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `gaming` | what gaming mode may change: `{powerProfile, chargeLimit}`, both `true` when unset |
 | `powerRestore` | what gaming mode changed and must undo (the daemon keeps it): `{profile: [before, set], limit: <battery path>}` |
 | `language` | the language for HoYoPlay's texts (`en-us`, `th-th`, …); the locale's when unset |
+| `achievementsChecked` | when achievements were last read from the Steam Web API (the daemon keeps it) |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching
@@ -187,3 +192,6 @@ Re-importing is safe: a game seen before is updated (paths only where empty, pla
 
 ## XXMI
 3DMigoto mods for Genshin Impact (GIMI) and ZZZ (ZZMI), set up as Twintail does, in `$XDG_DATA_HOME/somelauncher/xxmi/`: `3dmloader.exe` (TwintailTeam/3dmloader-Package), `libs/` (SpectrumQT/XXMI-Libs-Package: `d3d11.dll`, `d3dcompiler_47.dll`), and `gimi/`, `zzmi/` (SilentNightSound/GIMI-Package, leotorrez/ZZMI-Package: `d3dx.ini`, `Core/`, `ShaderFixes/`, copies of the libs, the user's `Mods/`), each from its latest GitHub release; `versions.json` records what is in place. Updates never write `Mods/` or `d3dx_user.ini`. A mod is a folder in `Mods/`; the packages' `d3dx.ini` skips folders named `DISABLED*`. A game's mods are on with `runner.xxmi: true` (off by default: mods break HoYoverse's terms of service).
+
+## Achievements
+Kept per game in the `achievements` table and read again from their source by `achievements.refresh`. Steam games (a `steam` source): Steam's own cache on this PC, no key needed (`appcache/stats/UserGameStatsSchema_<appid>.bin` for the list, names and descriptions in Steam's client language from `registry.vdf`, icons on Steam's CDN; `UserGameStats_<account>_<appid>.bin` for what is unlocked and when; binary KeyValues), which Steam writes for games played here. With `steamApiKey`, the Web API instead (`GetSchemaForGame`, `GetPlayerAchievements`; the profile's game details must be public), which also knows games never played here; on any Web API error the cache is used.

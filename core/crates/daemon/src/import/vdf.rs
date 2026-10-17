@@ -1,6 +1,7 @@
 //! Valve's text KeyValues (`.vdf`, `.acf`): quoted or bare tokens, `{ }`
 //! blocks, `//` comments. Keys are matched ignoring case, as Steam writes
 //! both `apps` and `Apps`. Conditionals (`[$WIN32]`) are skipped.
+//! Also binary KeyValues ([`parse_binary`]), Steam's `appcache/stats` files.
 
 use anyhow::{Result, bail};
 
@@ -42,6 +43,51 @@ pub fn parse(text: &str) -> Result<Vdf> {
     let mut tokens = Tokens { s: text.as_bytes(), i: 0 };
     let root = block(&mut tokens, false)?;
     Ok(root)
+}
+
+/// Binary KeyValues: a type byte, a NUL-ended key, then the value (`0` a
+/// block up to `8`, `1` a string, `2` an i32, `3` an f32, `7` a u64).
+/// Numbers come back as their text, like the text format.
+pub fn parse_binary(b: &[u8]) -> Result<Vdf> {
+    let mut i = 0;
+    let root = binary_block(b, &mut i, 0)?;
+    Ok(root)
+}
+
+fn binary_block(b: &[u8], i: &mut usize, depth: usize) -> Result<Vdf> {
+    if depth > 64 {
+        bail!("binary KeyValues nested too deep");
+    }
+    let cstr = |i: &mut usize| -> Result<String> {
+        let end = b[*i..].iter().position(|&c| c == 0).ok_or_else(|| anyhow::anyhow!("unterminated string at {}", *i))?;
+        let s = String::from_utf8_lossy(&b[*i..*i + end]).into_owned();
+        *i += end + 1;
+        Ok(s)
+    };
+    let take = |i: &mut usize, n: usize| -> Result<&[u8]> {
+        let s = b.get(*i..*i + n).ok_or_else(|| anyhow::anyhow!("cut short at {}", *i))?;
+        *i += n;
+        Ok(s)
+    };
+    let mut entries = Vec::new();
+    while *i < b.len() {
+        let t = b[*i];
+        *i += 1;
+        if t == 8 {
+            return Ok(Vdf::Map(entries));
+        }
+        let key = cstr(i)?;
+        let value = match t {
+            0 => binary_block(b, i, depth + 1)?,
+            1 => Vdf::Str(cstr(i)?),
+            2 => Vdf::Str(i32::from_le_bytes(take(i, 4)?.try_into()?).to_string()),
+            3 => Vdf::Str(f32::from_le_bytes(take(i, 4)?.try_into()?).to_string()),
+            7 => Vdf::Str(u64::from_le_bytes(take(i, 8)?.try_into()?).to_string()),
+            _ => bail!("unknown binary KeyValues type {t} at {}", *i - 1),
+        };
+        entries.push((key, value));
+    }
+    Ok(Vdf::Map(entries))
 }
 
 enum Tok {
@@ -138,6 +184,23 @@ fn block(t: &mut Tokens, nested: bool) -> Result<Vdf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_keyvalues() {
+        let mut b = vec![0u8];
+        b.extend(b"stats\0");
+        b.extend([1u8]);
+        b.extend(b"name\0Venti\0");
+        b.extend([2u8]);
+        b.extend(b"data\0");
+        b.extend(4095i32.to_le_bytes());
+        b.extend([8u8, 8u8]);
+        let v = parse_binary(&b).unwrap();
+        assert_eq!(v.str_at(&["stats", "name"]), Some("Venti"));
+        assert_eq!(v.str_at(&["stats", "data"]), Some("4095"));
+        assert!(parse_binary(&[1, b'x']).is_err());
+        assert!(parse_binary(&[9, b'x', 0]).is_err());
+    }
 
     #[test]
     fn parses_nested_blocks_comments_and_escapes() {

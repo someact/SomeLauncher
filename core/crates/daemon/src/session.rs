@@ -357,6 +357,10 @@ impl State {
             state.emit("game.state", json!({ "id": id, "state": "stopped" }));
             state.games_changed();
             state.emit("library.changed", json!({ "ids": [id] }));
+            // What the session unlocked (Steam writes its cache as the game runs)
+            if let Err(e) = state.refresh_achievements(id, true).await {
+                tracing::warn!(id, "achievements after the game: {e:#}");
+            }
         });
     }
 

@@ -84,6 +84,8 @@ impl State {
             "hoyo.games" => self.hoyo_games(params).await,
             "hoyo.content" => self.hoyo_content(params).await,
             "hoyo.media" => self.hoyo_media(params).await,
+            "achievements.list" => self.achievements_list(params),
+            "achievements.refresh" => self.achievements_refresh(params).await,
             "xxmi.status" => self.xxmi_status(params).await,
             "xxmi.update" => self.xxmi_update(),
             "xxmi.mods" => self.xxmi_mods(params),

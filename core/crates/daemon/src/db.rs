@@ -60,6 +60,20 @@ const MIGRATIONS: &[&str] = &[
     );",
     // 7: build info (proto::game::Build as JSON, without what is worked out on load)
     "ALTER TABLE games ADD COLUMN build TEXT NOT NULL DEFAULT '{}';",
+    // 8: achievements per game, in the order their source lists them (achievements/mod.rs)
+    "CREATE TABLE achievements (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        api_name TEXT NOT NULL,
+        ord INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        hidden INTEGER NOT NULL DEFAULT 0,
+        icon TEXT,
+        icon_gray TEXT,
+        unlocked_at INTEGER,
+        source TEXT NOT NULL,
+        PRIMARY KEY (game_id, api_name)
+    );",
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

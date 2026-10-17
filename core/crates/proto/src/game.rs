@@ -246,6 +246,22 @@ pub struct Game {
     pub art: Art,
     #[serde(default)]
     pub build: Build,
+    /// Achievement progress, when the game has achievements we know of (worked out on load)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub achievements: Option<Progress>,
+}
+
+/// How many of a game's achievements are unlocked, and where the list came from
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    pub unlocked: u32,
+    pub total: u32,
+    /// `steam` (Steam's own cache on this PC), `steamApi` (the Web API), `gbe` (a gbe_fork/Goldberg save)
+    pub source: String,
+    /// Unix seconds of the last unlock
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<i64>,
 }
 
 /// Which build of the game is installed and whether a newer one is out.
@@ -344,6 +360,7 @@ impl Game {
             meta: None,
             art: Art::default(),
             build: Build::default(),
+            achievements: None,
         }
     }
 }

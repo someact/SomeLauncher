@@ -44,6 +44,7 @@ fn from_row(row: &Row) -> rusqlite::Result<Game> {
         meta: None,
         art: Default::default(),
         build: json(row, 14)?,
+        achievements: None,
     })
 }
 
@@ -105,6 +106,7 @@ pub fn get(conn: &Connection, id: i64) -> Result<Option<Game>> {
     game.sources = sources(conn, id)?;
     game.meta = meta(conn, id)?;
     game.art = crate::meta::art::of(conn, id)?;
+    game.achievements = crate::achievements::progress(conn, id)?;
     fill_build(&mut game);
     Ok(Some(game))
 }
@@ -119,6 +121,7 @@ pub fn list(conn: &Connection, include_hidden: bool) -> Result<Vec<Game>> {
         g.sources = sources(conn, g.id)?;
         g.meta = meta(conn, g.id)?;
         g.art = crate::meta::art::of(conn, g.id)?;
+        g.achievements = crate::achievements::progress(conn, g.id)?;
         fill_build(g);
     }
     Ok(games)
