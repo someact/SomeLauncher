@@ -533,6 +533,14 @@ Flickable {
                 }
             }
             SettingRow {
+                title: "Animated backgrounds"
+                note: "HoYoverse's video loops on the Online page, played only while the window is focused (off with reduced motion)"
+                Switch {
+                    checked: Config.ui.onlineVideo
+                    onToggled: on => Config.ui.onlineVideo = on
+                }
+            }
+            SettingRow {
                 visible: !Config.motion.reduce
                 title: "Motion speed"
                 Slider {

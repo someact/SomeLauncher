@@ -145,6 +145,13 @@ Singleton {
         const s = g && g.sources ? g.sources.find(s => s.source === "hoyo") : null;
         return s ? s.data : null;
     }
+    // Which HoYoPlay game a Hoyo game is (`hk4e_global`, `nap_global`): ours, else Twintail's
+    function hoyoBiz(g) {
+        if (!g || g.kind !== "hoyo")
+            return "";
+        const s = g.sources.find(s => s.source === "hoyo") ?? g.sources.find(s => s.data && s.data.biz);
+        return s && s.data && s.data.biz ? s.data.biz : "";
+    }
     function setFavorite(id, on) {
         update(id, { favorite: on });
     }
@@ -185,6 +192,11 @@ Singleton {
             return "";
         const h = seconds / 3600;
         return h >= 10 ? Math.round(h) + " h" : h >= 1 ? h.toFixed(1).replace(/\.0$/, "") + " h" : Math.max(1, Math.round(seconds / 60)) + " min";
+    }
+    function bytes(n) {
+        if (n === null || n === undefined)
+            return "";
+        return n >= 1e9 ? (n / 1e9).toFixed(n >= 1e11 ? 0 : 1) + " GB" : Math.max(1, Math.round(n / 1e6)) + " MB";
     }
     function ago(t) {
         if (!t)

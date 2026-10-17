@@ -83,6 +83,7 @@ impl State {
             "power.status" => Ok(self.power_status().await),
             "hoyo.games" => self.hoyo_games(params).await,
             "hoyo.content" => self.hoyo_content(params).await,
+            "hoyo.media" => self.hoyo_media(params).await,
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,

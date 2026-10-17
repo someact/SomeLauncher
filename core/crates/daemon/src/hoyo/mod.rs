@@ -6,6 +6,7 @@ pub mod api;
 pub mod files;
 pub mod install;
 pub mod manage;
+pub mod media;
 pub mod runner;
 pub mod sophon;
 pub mod update;
@@ -64,6 +65,16 @@ impl State {
                 })
                 .collect(),
         ))
+    }
+
+    /// `hoyo.media {url}`: a local copy of a HoYoPlay background, loop or theme
+    pub(crate) async fn hoyo_media(&self, params: &Value) -> Result<Value, Error> {
+        let url = params["url"].as_str().ok_or_else(|| Error::new("bad_params", "missing string `url`"))?;
+        if media::file_for(&media::dir(), url).is_err() {
+            return Err(Error::new("bad_params", format!("not HoYoPlay media: {url}")));
+        }
+        let path = media::get(&self.http, url).await.map_err(network)?;
+        Ok(json!({ "path": path }))
     }
 
     pub(crate) async fn hoyo_content(&self, params: &Value) -> Result<Value, Error> {
