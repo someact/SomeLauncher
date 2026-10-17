@@ -7,7 +7,7 @@ import qs.components
 // without one by kind, and the games that are not installed last. Searching or
 // picking a filter shows a grid of the matches instead. Typing anywhere
 // searches; Ctrl+F or / focuses the box, Escape clears it.
-// A click opens the game page, a double click plays the game.
+// A click opens the game page, a double click plays the game; + adds one by hand.
 Item {
     id: root
 
@@ -184,9 +184,19 @@ Item {
                     visible: Library.loaded
                 }
             }
+            IconButton {
+                id: addButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 44
+                height: 44
+                icon: "add"
+                onClicked: Nav.addGame()
+            }
             SearchField {
                 id: search
-                anchors.right: parent.right
+                anchors.right: addButton.left
+                anchors.rightMargin: Theme.space.s
                 width: Math.min(360, parent.width * 0.45)
                 placeholder: "Search by name, tag or category"
                 onEscaped: root.forceActiveFocus()

@@ -3,8 +3,9 @@ import qs.core
 
 // Picks what a game is (3a): a search box (the game's name to start with) and
 // the candidates from `meta.search` as covers, best first; a click matches the
-// game (`meta.match`) and fires `matched(game)`. The settings sheet and the
-// add wizard share it.
+// game (`meta.match`) and fires `matched(game)`. Without a game yet (the add
+// wizard, `gameId` -1) it searches `query` and a click only fires `chosen(c)`,
+// for the wizard to match once the game is added.
 Column {
     id: root
 
@@ -15,9 +16,11 @@ Column {
     property string error: ""
     property string matching: ""             // the candidate being matched: source:id
     readonly property var game: Library.byId[gameId] ?? null
-    readonly property string matchedKey: game && game.meta ? game.meta.source + ":" + game.meta.sourceId : ""
+    property string chosenKey: ""
+    readonly property string matchedKey: game && game.meta ? game.meta.source + ":" + game.meta.sourceId : chosenKey
 
     signal matched(var game)
+    signal chosen(var candidate)
 
     spacing: Theme.space.m
 
@@ -25,7 +28,8 @@ Column {
         searching = true;
         error = "";
         const q = field.text.trim();
-        Daemon.call("meta.search", q !== "" && (!game || q !== game.name) ? { id: gameId, query: q } : { id: gameId }, (r, e) => {
+        const params = gameId < 0 ? { query: q } : q !== "" && (!game || q !== game.name) ? { id: gameId, query: q } : { id: gameId };
+        Daemon.call("meta.search", params, (r, e) => {
             searching = false;
             if (e)
                 error = e.message;
@@ -33,6 +37,12 @@ Column {
         });
     }
     function pick(c) {
+        if (gameId < 0) {
+            const key = c.source + ":" + c.id;
+            chosenKey = chosenKey === key ? "" : key;
+            root.chosen(chosenKey ? c : null);
+            return;
+        }
         matching = c.source + ":" + c.id;
         Daemon.call("meta.match", { id: gameId, source: c.source, sourceId: c.id }, (g, e) => {
             matching = "";
@@ -42,7 +52,7 @@ Column {
                 root.matched(g);
         });
     }
-    Component.onCompleted: if (gameId >= 0) search()
+    Component.onCompleted: if (gameId >= 0 || query !== "") search()
 
     Row {
         width: parent.width

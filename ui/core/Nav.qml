@@ -3,7 +3,8 @@ pragma Singleton
 import QtQuick
 import Quickshell
 
-// Which game page is open over the current page, and where it grows from.
+// Which game page is open over the current page, and where it grows from;
+// whether the add-game wizard is open.
 // `Nav.openGame(id, card)` opens it from a card (its art Item: the page's art
 // starts at that rect and radius); `Nav.closeGame()` shrinks it back. `gameId`
 // stays set until the page has finished closing (`open` is false by then).
@@ -14,6 +15,11 @@ Singleton {
     property bool open: false
     property rect from: Qt.rect(0, 0, 0, 0)    // scene coordinates; empty: the page fades instead
     property real fromRadius: 0
+    property bool adding: false                // the add-game wizard is open
+
+    function addGame() {
+        adding = true;
+    }
 
     function openGame(id, item) {
         if (item) {

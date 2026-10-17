@@ -181,5 +181,12 @@ Item {
                 });
             }
         }
+        TextButton {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: Daemon.ready && Library.loaded && !importing.running
+            icon: "add"
+            text: "Add a game by hand"
+            onClicked: Nav.addGame()
+        }
     }
 }

@@ -107,6 +107,31 @@ ShellRoot {
                 onLoaded: item.forceActiveFocus()
                 onActiveChanged: if (!active) pageLoader.forceActiveFocus()
             }
+
+            // Adding a game by hand; the new game's page opens after
+            AddGame {
+                anchors.fill: parent
+                open: Nav.adding
+                onCloseRequested: Nav.adding = false
+                onAdded: id => {
+                    Nav.adding = false;
+                    Nav.openGame(id, null);
+                }
+            }
+
+            // The first start: the import dialog, once
+            Loader {
+                anchors.fill: parent
+                active: Config.ready && !Config.ui.welcomed && Daemon.ready && Library.loaded
+                sourceComponent: Welcome {
+                    open: true
+                    onCloseRequested: Config.ui.welcomed = true
+                    onAddRequested: {
+                        Config.ui.welcomed = true;
+                        Nav.addGame();
+                    }
+                }
+            }
         }
     }
 }
