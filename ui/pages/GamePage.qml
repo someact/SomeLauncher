@@ -7,7 +7,8 @@ import qs.components
 
 // The game page (PS5 style), shown over the current page by shell.qml while
 // Nav.gameId is set: the hero art at full size, the logo, Play, settings and
-// favorite, then playtime, last played, achievements and the build. It grows
+// favorite, then playtime, last played, achievements (their list slides in
+// like the settings) and the build. It grows
 // out of the card that opened it (Nav.from) and shrinks back into it; without
 // a card it fades. Escape, the back arrow or the mouse's back button close it,
 // Enter plays. The settings button slides the game's settings sheet over it.
@@ -56,11 +57,13 @@ FocusScope {
     Keys.onEscapePressed: {
         if (settings.open)
             settings.open = false;
+        else if (achievements.open)
+            achievements.open = false;
         else
             Nav.closeGame();
     }
-    Keys.onReturnPressed: if (!settings.open) play.trigger()
-    Keys.onEnterPressed: if (!settings.open) play.trigger()
+    Keys.onReturnPressed: if (!settings.open && !achievements.open) play.trigger()
+    Keys.onEnterPressed: if (!settings.open && !achievements.open) play.trigger()
 
     // The page under it darkens and takes no clicks; a click beside the page closes it
     Rectangle {
@@ -323,12 +326,14 @@ FocusScope {
                         value: root.game ? (root.game.id in Library.running ? "Playing now" : Library.ago(root.game.lastPlayed)) : ""
                     }
                     Stat {
-                        // Filled by Phase 7: `achievements: {unlocked, total}`
+                        // `achievements: {unlocked, total}`; the list opens beside the page
                         readonly property var a: root.game ? root.game.achievements ?? null : null
                         visible: !!a && a.total > 0
                         label: "Achievements"
                         value: a ? `${a.unlocked} / ${a.total}` : ""
                         progress: a && a.total ? a.unlocked / a.total : -1
+                        note: "See all"
+                        onClicked: achievements.open = true
                     }
                     Stat {
                         readonly property var b: root.game ? root.game.build ?? {} : {}
@@ -411,6 +416,18 @@ FocusScope {
         onOpenChanged: if (open) forceActiveFocus()
     }
 
+    AchievementsSheet {
+        id: achievements
+        anchors.fill: parent
+        game: root.game
+        visible: root.t > 0.5
+        onCloseRequested: {
+            open = false;
+            root.forceActiveFocus();
+        }
+        onOpenChanged: if (open) forceActiveFocus()
+    }
+
     // "semiwork · 2025 · Action, Early Access"
     function byline(g) {
         if (!g || !g.meta)
@@ -466,12 +483,22 @@ FocusScope {
         property string note: ""
         property bool highlight: false
         property real progress: -1
+        signal clicked
         width: Math.max(132, statCol.implicitWidth + Theme.space.l * 2)
         height: statCol.implicitHeight + Theme.space.m * 2
         radius: Theme.radius.normal
         color: Qt.rgba(0, 0, 0, 0.32)
         border.width: 1
-        border.color: highlight ? Theme.primary : Theme.glassRim
+        border.color: highlight ? Theme.primary : statMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.3) : Theme.glassRim
+        // Only a tile with somewhere to go takes clicks
+        MouseArea {
+            id: statMouse
+            anchors.fill: parent
+            enabled: stat.note === "See all"
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: stat.clicked()
+        }
         Column {
             id: statCol
             x: Theme.space.l

@@ -2,7 +2,8 @@ import QtQuick
 import qs.core
 
 // A portrait game card: grid art (or its fallback), lifting on hover, with a
-// ring when it is the selected one, and badges: Steam, running, update out, favorite.
+// ring when it is the selected one, and badges: Steam, running, update out,
+// favorite, and achievements (unlocked/total) at the bottom.
 Item {
     id: root
 
@@ -73,6 +74,39 @@ Item {
             anchors.left: parent.left
             anchors.margins: Theme.space.s
             game: root.game
+        }
+
+        // Achievements: unlocked of total, filled once all are
+        Rectangle {
+            readonly property var a: root.game ? root.game.achievements ?? null : null
+            readonly property bool done: !!a && a.total > 0 && a.unlocked === a.total
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.margins: Theme.space.s
+            visible: !!a && a.total > 0
+            width: trophyRow.implicitWidth + Theme.space.m * 2
+            height: 24
+            radius: 12
+            color: done ? Theme.primary : Theme.scrim
+            Row {
+                id: trophyRow
+                anchors.centerIn: parent
+                spacing: 3
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "trophy"
+                    size: 14
+                    fill: 1
+                    color: parent.parent.done ? Theme.fgPrimary : Theme.fgOnArt
+                }
+                SText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: parent.parent.a ? parent.parent.a.unlocked + "/" + parent.parent.a.total : ""
+                    color: parent.parent.done ? Theme.fgPrimary : Theme.fgOnArt
+                    font.pixelSize: Theme.font.small
+                    font.weight: Theme.font.weightTitle
+                }
+            }
         }
 
         Row {

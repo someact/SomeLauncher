@@ -171,6 +171,12 @@ Singleton {
         return a.length === b.length && a.every((x, i) => x === b[i]);
     }
 
+    // An image the daemon names: a URL as it is, a local path as a file URL
+    function media(src) {
+        if (!src)
+            return "";
+        return src.startsWith("/") ? Paths.url(src) : src;
+    }
     function art(game, kind) {
         const p = game && game.art ? game.art[kind] : null;
         return p ? Paths.url(p) : "";
