@@ -55,6 +55,7 @@ Singleton {
             property JsonObject ui: JsonObject {
                 property string page: "home"       // the page shown at start (the last one open)
                 property bool welcomed: false      // the first-run import dialog was shown
+                property string onPlay: "stay"     // when a game starts: stay, hide (back when it ends) or close
             }
             property JsonObject home: JsonObject {
                 property int recentDays: 30        // games not played for this long drop off Home (0: never); Library keeps them

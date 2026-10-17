@@ -21,7 +21,8 @@ Flickable {
     property var downloads: ({})             // id → {label, done, total}
     property string message: ""              // the last job's outcome
     property bool messageError: false
-    readonly property var defaults: settings.defaults ?? {}
+    // What applies when the setting leaves a field out (the daemon's Defaults)
+    readonly property var defaults: Object.assign({ mangohud: false, gamemode: true, gamescope: { enabled: false } }, settings.defaults ?? {})
 
     function refresh() {
         Daemon.call("settings.get", undefined, r => root.settings = r ?? {});
@@ -56,7 +57,7 @@ Flickable {
         });
     }
     function setDefault(key, value) {
-        const d = Object.assign({ mangohud: false, gamemode: false, gamescope: { enabled: false } }, defaults);
+        const d = Object.assign({}, defaults);
         if (value === null)
             delete d[key];
         else
@@ -512,6 +513,15 @@ Flickable {
                 Switch {
                     checked: Config.glass.rim
                     onToggled: on => Config.glass.rim = on
+                }
+            }
+            SettingRow {
+                title: "When a game starts"
+                note: Config.ui.onPlay === "hide" ? "The window hides and comes back when the game ends" : Config.ui.onPlay === "close" ? "The launcher closes; games keep running" : "The launcher stays open, paused"
+                Segmented {
+                    options: [{ id: "stay", name: "Stay" }, { id: "hide", name: "Hide" }, { id: "close", name: "Close" }]
+                    current: Config.ui.onPlay
+                    onPicked: id => Config.ui.onPlay = id
                 }
             }
             SettingRow {

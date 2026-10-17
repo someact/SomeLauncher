@@ -353,7 +353,8 @@ mod tests {
             default_proton: None,
             umu: Some("/usr/bin/umu-run".into()),
             prefix_root: "/g/Prefixes".into(),
-            defaults: Defaults::default(),
+            // Without the default gamemoderun, so the tests see their own wrappers only
+            defaults: Defaults { gamemode: false, ..Defaults::default() },
             offload: None,
             tools: WRAPPERS.iter().map(|t| t.to_string()).collect(),
             monitor: Some(crate::monitor::Monitor { name: "DP-1".into(), width: 2560, height: 1440, refresh: 144 }),
@@ -551,5 +552,14 @@ mod tests {
         use somelauncher_proto::game::FpsCap;
         let read = |s: &str| serde_json::from_str::<FpsCap>(s).unwrap().fps(Some(100));
         assert_eq!((read("false"), read("\"monitor\""), read("75")), (None, Some(100), Some(75)));
+    }
+
+    #[test]
+    fn gamemoderun_is_on_by_default() {
+        let mut c = ctx();
+        c.defaults = serde_json::from_str("{}").unwrap();
+        assert_eq!(plan(&game(Kind::Proton), &c).unwrap().argv[0], "gamemoderun");
+        c.tools.remove("gamemoderun");
+        assert_ne!(plan(&game(Kind::Proton), &c).unwrap().argv[0], "gamemoderun");
     }
 }

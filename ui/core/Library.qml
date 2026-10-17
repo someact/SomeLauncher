@@ -18,6 +18,9 @@ Singleton {
     // A game is being played (not just starting): the UI pauses its motion (core/Motion.qml)
     readonly property bool playing: Object.keys(running).some(id => running[id].state === "running")
     property bool loaded: false
+    // A game went from starting (or nothing) to running while we watched; not
+    // for games found running on connect
+    signal gameStarted(int id)
     // Unix seconds, renewed with each change: what "2 days ago" is counted from
     property real now: Date.now() / 1000
 
@@ -88,12 +91,15 @@ Singleton {
                     root._changed[id] = true;
                 gather.restart();
             } else if (name === "game.state") {
+                const was = root.running[data.id];
                 const r = Object.assign({}, root.running);
                 if (data.state === "stopped")
                     delete r[data.id];
                 else
                     r[data.id] = data;
                 root.running = r;
+                if (data.state === "running" && (!was || was.state !== "running"))
+                    root.gameStarted(data.id);
             }
         }
     }

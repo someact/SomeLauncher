@@ -34,7 +34,7 @@ Item {
     function load() {
         error = "";
         plan = null;
-        Daemon.call("settings.get", { key: "defaults" }, r => root.defaults = r ?? {});
+        Daemon.call("settings.get", { key: "defaults" }, r => root.defaults = Object.assign({ mangohud: false, gamemode: true, gamescope: { enabled: false } }, r ?? {}));
         Daemon.call("status", undefined, r => root.monitor = r ? r.monitor ?? null : null);
         Daemon.call("proton.list", undefined, r => {
             if (r)

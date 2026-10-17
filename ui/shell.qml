@@ -58,6 +58,29 @@ ShellRoot {
         return "pages/" + id.charAt(0).toUpperCase() + id.slice(1) + "Page.qml";
     }
 
+    // When a game starts (Config.ui.onPlay): hide the window until the last
+    // game ends, or quit (the daemon keeps the game). Hidden, nothing renders.
+    property bool hiddenForGame: false
+    Connections {
+        target: Library
+        function onGameStarted(id) {
+            if (Config.ui.onPlay === "close") {
+                Qt.quit();
+            } else if (Config.ui.onPlay === "hide") {
+                app.hiddenForGame = true;
+                win.visible = false;
+            }
+        }
+        function onPlayingChanged() {
+            if (!Library.playing && app.hiddenForGame)
+                app.show();
+        }
+    }
+    function show() {
+        hiddenForGame = false;
+        win.visible = true;
+    }
+
     FloatingWindow {
         id: win
         title: "SomeLauncher"

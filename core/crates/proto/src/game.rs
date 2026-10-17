@@ -190,10 +190,11 @@ impl FpsCap {
 }
 
 /// Global launch defaults (the `defaults` setting); a game's own runner fields win.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Defaults {
     pub mangohud: bool,
+    /// On unless turned off: gamemoderun is what SomeShell's game mode follows (5d)
     pub gamemode: bool,
     pub gamescope: Gamescope,
     /// None: on when the machine is a hybrid-GPU laptop
@@ -201,6 +202,12 @@ pub struct Defaults {
     /// None: no cap
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fps_cap: Option<FpsCap>,
+}
+
+impl Default for Defaults {
+    fn default() -> Self {
+        Self { mangohud: false, gamemode: true, gamescope: Gamescope::default(), prime: None, fps_cap: None }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
