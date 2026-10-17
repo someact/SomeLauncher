@@ -122,13 +122,15 @@ ClippingRectangle {
 
         Item {
             width: parent.width
-            height: logo.visible ? Math.min(140, root.height * 0.3) : name.implicitHeight
+            // Sized before the logo loads, so the size never waits on its own status
+            height: logo.source != "" && logo.status !== Image.Error ? Math.min(140, root.height * 0.3) : name.implicitHeight
             Image {
                 id: logo
                 anchors.fill: parent
                 visible: status === Image.Ready
                 source: Library.art(root.game, "logo")
-                sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
+                // The box's largest size, never its current one (that would loop through the box's height)
+                sourceSize: Qt.size(Math.ceil(560 * Screen.devicePixelRatio), Math.ceil(140 * Screen.devicePixelRatio))
                 fillMode: Image.PreserveAspectFit
                 horizontalAlignment: Image.AlignLeft
                 verticalAlignment: Image.AlignBottom
@@ -138,7 +140,7 @@ ClippingRectangle {
                 id: name
                 width: parent.width
                 anchors.bottom: parent.bottom
-                visible: !logo.visible
+                visible: logo.source == "" || logo.status === Image.Error
                 text: root.game ? root.game.name : ""
                 color: Theme.fgOnArt
                 wrapMode: Text.Wrap
