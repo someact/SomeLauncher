@@ -22,7 +22,7 @@ Daemon → client, an event (no `id`):
 ```json
 {"event": "settings.changed", "data": {"key": "gameDirs", "value": ["/games"]}}
 ```
-Every client gets every event. Replies and events share one ordered stream, so a client tells them apart by the `id` field.
+Every client gets every event. Besides the UI and the CLI, SomeShell is a client (its `services/Launcher.qml`: what runs, downloads, playtime), so events and their fields are part of the contract. Replies and events share one ordered stream, so a client tells them apart by the `id` field.
 
 On connect the daemon first sends `hello`:
 ```json
