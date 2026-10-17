@@ -16,6 +16,7 @@ Flickable {
     property var settings: ({})
     property var status: null
     property var protons: ({ builds: [], default: "" })
+    property var power: null                 // power.status: profiles, battery, gaming
     property var available: []               // GE-Proton and Proton-CachyOS releases to download
     property var downloads: ({})             // id → {label, done, total}
     property string message: ""              // the last job's outcome
@@ -25,6 +26,7 @@ Flickable {
     function refresh() {
         Daemon.call("settings.get", undefined, r => root.settings = r ?? {});
         Daemon.call("status", undefined, r => root.status = r);
+        Daemon.call("power.status", undefined, r => root.power = r);
         loadProtons();
         Daemon.call("downloads.list", undefined, r => {
             const d = {};
@@ -86,7 +88,9 @@ Flickable {
                 root.refresh();
         }
         function onEvent(name, data) {
-            if (name === "settings.changed") {
+            if (name === "power.changed") {
+                Daemon.call("power.status", undefined, r => root.power = r);
+            } else if (name === "settings.changed") {
                 const s = Object.assign({}, root.settings);
                 if (data.value === null)
                     delete s[data.key];
@@ -336,6 +340,25 @@ Flickable {
                     current: root.settings.defaultProton ?? ""
                     options: [{ id: "", name: "The newest GE-Proton", note: root.protons.default }].concat(root.protons.builds.map(b => ({ id: b.name, name: b.name })))
                     onPicked: id => root.set("defaultProton", id || null)
+                }
+            }
+            SettingRow {
+                visible: !!root.power && root.power.profiles.length > 0
+                title: "Performance while gaming"
+                note: "The power profile goes to performance while a game runs (balanced on battery) and back after" + (root.power && root.power.gaming ? ". A game is running now" : "")
+                Switch {
+                    checked: (root.settings.gaming ?? {}).powerProfile !== false
+                    onToggled: on => root.set("gaming", Object.assign({}, root.settings.gaming ?? {}, { powerProfile: on }))
+                }
+            }
+            SettingRow {
+                visible: !!root.power && !!root.power.battery
+                title: "Battery bypass while gaming"
+                note: root.power && root.power.battery && !root.power.battery.limitSupported ? "This laptop's driver has no charge limit for UPower to use" : "On the charger, the battery's charge limit goes on while a game runs, so the laptop runs from the charger; off again after"
+                Switch {
+                    enabled: !!root.power && !!root.power.battery && root.power.battery.limitSupported
+                    checked: (root.settings.gaming ?? {}).chargeLimit !== false
+                    onToggled: on => root.set("gaming", Object.assign({}, root.settings.gaming ?? {}, { chargeLimit: on }))
                 }
             }
             SettingRow {

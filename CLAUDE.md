@@ -18,6 +18,8 @@ core/target/debug/somelauncher list | play <game> | stop <game> | status | call 
 ```
 - The UI starts the daemon itself when nobody answers on the socket (`SOMELAUNCHER_DAEMON`, set by dev.sh, else `somelauncherd` on PATH), and starts it again once per outage. A running daemon from an older build keeps answering: `somelauncher call shutdown` before testing daemon changes through the UI.
 - Isolated runs: point `XDG_DATA_HOME`/`XDG_STATE_HOME`/`XDG_CONFIG_HOME` at a temp dir and `SOMELAUNCHER_SOCKET` at a short path (unix socket paths max 107 bytes, the scratchpad is too long).
+- Gaming mode (5a/5b) without a laptop: `scripts/fake-upower.py` on a private bus (`dbus-daemon --session --fork --print-address=1`), the daemon started with `DBUS_SYSTEM_BUS_ADDRESS` pointing at it; its header has the steps.
+- `pkill -f <pattern>` from a tool shell kills that shell too (its own command line matches): kill by pid.
 - The daemon logs to `~/.local/state/somelauncher/daemon.log` (`SOMELAUNCHER_LOG` is an env filter, default `info`).
 - UI screenshots for review: `grim -g "$(hyprctl clients -j | jq -r '.[]|select(.title=="SomeLauncher")|"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')" out.png`.
 

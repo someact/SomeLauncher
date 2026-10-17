@@ -222,6 +222,7 @@ impl State {
         if started.is_err() {
             self.running.lock().unwrap().remove(&id);
             self.emit("game.state", json!({ "id": id, "state": "stopped" }));
+            self.games_changed();
         }
         started
     }
@@ -277,6 +278,7 @@ impl State {
         let unit = track.unit();
         self.running.lock().unwrap().insert(id, Running { track: track.clone(), since: None });
         self.emit("game.state", json!({ "id": id, "state": "starting", "step": "steam" }));
+        self.games_changed();
         tracing::info!(id, appid, "asked Steam to start {}", game.name);
 
         let state = self.clone();
@@ -292,6 +294,7 @@ impl State {
                     tracing::warn!(id, "{}: {e:#}", game.name);
                     state.running.lock().unwrap().remove(&id);
                     state.emit("game.state", json!({ "id": id, "state": "stopped", "error": format!("{e:#}") }));
+                    state.games_changed();
                 }
             }
         });
@@ -326,6 +329,7 @@ impl State {
         let unit = track.unit();
         self.running.lock().unwrap().insert(id, Running { track, since: Some(since) });
         self.emit("game.state", json!({ "id": id, "state": "running", "unit": unit, "since": since }));
+        self.games_changed();
         let state = self.clone();
         tokio::spawn(async move {
             let mut beat = tokio::time::interval_at(tokio::time::Instant::now() + HEARTBEAT, HEARTBEAT);
@@ -350,6 +354,7 @@ impl State {
             state.running.lock().unwrap().remove(&id);
             tracing::info!(id, "game {id} ended");
             state.emit("game.state", json!({ "id": id, "state": "stopped" }));
+            state.games_changed();
             state.emit("library.changed", json!({ "ids": [id] }));
         });
     }

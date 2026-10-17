@@ -98,8 +98,8 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [x] 4g. Motion pass: springs, page transitions, card hover, reduced motion option; everything pauses while a game runs — pages slide in from the side of the rail they come from, cards rise on hover and stagger in when a row is new, the game page grows out of its card (4c), sheets and dialogs spring; `Motion.paused` (one of our games running, or SomeShell's game mode) turns reduced motion on, which skips the decorative moves
 
 ## Phase 5: Profiles and SomeShell
-- [ ] 5a. Power profile: `powerprofilesctl` to performance on launch (balanced on battery), restore the previous one on exit
-- [ ] 5b. Battery bypass while gaming on AC (UPower `EnableChargeThreshold`, as SomeShell's `services/Battery.qml`), restored on exit; laptop only
+- [x] 5a. Power profile: `powerprofilesctl` to performance on launch (balanced on battery), restore the previous one on exit — through power-profiles-daemon's D-Bus API (`busctl`) rather than the CLI; follows the charger mid-game, leaves a profile the user picked, restores after a daemon crash (`powerRestore`). Tested on this PC and on `scripts/fake-upower.py`
+- [x] 5b. Battery bypass while gaming on AC (UPower `EnableChargeThreshold`, as SomeShell's `services/Battery.qml`), restored on exit; laptop only — tested on a fake UPower laptop (`scripts/fake-upower.py`); still to try once on the real laptop, since the driver decides what the threshold does. Both switches are in Settings → Launch defaults
 - [ ] 5c. Per-machine defaults: the gamescope size/refresh and FPS cap come from the monitor the window is on (`hyprctl monitors -j`)
 - [ ] 5d. gamemoderun by default (SomeShell's `GameClients` then turns its game mode on); the launcher pauses video and animations, optionally closes or minimizes its window
 - [ ] 5e. SomeShell integration when present: island state for download progress and "Playing X" (IPC on the shell), an overlay card (recent games, playtime), `qs -c somelauncher ipc call ...` targets

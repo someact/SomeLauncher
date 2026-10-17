@@ -20,6 +20,8 @@ pub struct State {
     pub(crate) jobs: crate::jobs::Jobs,
     /// Running (or starting) games
     pub(crate) running: Mutex<std::collections::HashMap<i64, crate::session::Running>>,
+    /// Gaming mode: the power profile and charge limit while games run
+    pub(crate) power: tokio::sync::Mutex<crate::power::Power>,
     events: broadcast::Sender<Event>,
     shutdown: watch::Sender<bool>,
 }
@@ -37,6 +39,7 @@ impl State {
                 .expect("the TLS backend loads"),
             jobs: Default::default(),
             running: Default::default(),
+            power: Default::default(),
             events: broadcast::channel(256).0,
             shutdown: watch::channel(false).0,
         })
@@ -76,6 +79,7 @@ impl State {
                 "pid": std::process::id(),
                 "db": self.db_path,
             })),
+            "power.status" => Ok(self.power_status().await),
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {

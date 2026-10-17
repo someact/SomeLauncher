@@ -80,6 +80,7 @@ On connect the daemon first sends `hello`:
 | `proton.remove` | `{name}` | `null`; only builds in our `compatibilitytools.d` |
 | `downloads.list` | — | running jobs `{id, label, done, total}` |
 | `downloads.cancel` | `{id}` | `null`; the job stops and its partial files are removed. Emits `download.done` with `error: "cancelled"` |
+| `power.status` | — | `{profiles, active, onBattery, battery, gaming, prefs}`: power-profiles-daemon's profiles (empty without it) and the active one, the laptop battery (`null` on a desktop: `{path, limitSupported, limitEnabled, limitStart, limitEnd}`), whether gaming mode is on (see Gaming mode), and the `gaming` setting with its defaults |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -91,6 +92,7 @@ On connect the daemon first sends `hello`:
 | `download.done` | `{id, label, error?}` |
 | `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam), `running` (with its systemd unit, or `steam:<appid>`, and `since`) or `stopped` (with `error` when it failed to start) |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
+| `power.changed` | `{gaming}`: gaming mode went on (the first game started) or off (the last one ended) |
 
 ## Game
 `core/crates/proto/src/game.rs`. Times are unix seconds, `playtime` is seconds.
@@ -129,6 +131,8 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `umuRun` | the umu-run to use; else `umu-run` on PATH, else the copy Lutris ships |
 | `artScreenWidth` | the screen width art was last sized for (the daemon keeps it) |
 | `buildsChecked` | when the last update check ran (the daemon keeps it) |
+| `gaming` | what gaming mode may change: `{powerProfile, chargeLimit}`, both `true` when unset |
+| `powerRestore` | what gaming mode changed and must undo (the daemon keeps it): `{profile: [before, set], limit: <battery path>}` |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching
@@ -143,6 +147,9 @@ Sessions: a game counts as running until its scope has no process left (`cgroup.
 - `runner.env` is applied last and wins, except that a `WINEDLLOVERRIDES` there is joined to ours.
 - `runner.needsSteam` (`proton`/`hoyo` games whose co-op needs the real Steam client: OnlineFix, gbe_fork experimental): Steam is started (`steam -silent`, in its own scope) and awaited until logged in (`registry.vdf`, 3 minutes at most); `steamclient.dll`, `steamclient64.dll`, `GameOverlayRenderer64.dll`, `Steam.dll` and `steam.exe` (Steam's `SteamService.exe`) are copied, never linked, into the prefix's `Program Files (x86)/Steam`; `steam_appid.txt` is written next to the exe when missing (`runner.steamAppId`, else OnlineFix's `FakeAppId`, else 480); the env gets `UMU_USE_STEAM=1` and `n,b` overrides for `winmm`, `OnlineFix64`, `SteamOverlay64`, `StubDRM64`, `steam_api64` unless the game sets them.
 - `runner.preLaunch` runs through `sh -c` before the game, with its env and working dir; if it fails the game does not start. `runner.postExit` runs after the game exits.
+
+## Gaming mode
+While at least one game runs or starts, the power profile is performance (balanced on battery) through power-profiles-daemon, and on a laptop on AC the battery's charge limit is on (UPower's `EnableChargeThreshold`: a start/stop threshold, or conservation mode, which runs the laptop from the charger). Plugging in or out during the game is followed (UPower's `OnBattery`, watched only while gaming). When the last game ends each goes back, only if it is still what we set (a profile the user picked during the game stays). What to undo is kept in `powerRestore`, so a daemon that died mid-game restores on its next start. A desktop without a battery or without power-profiles-daemon skips that part. All of it is on the system bus through `busctl`/`gdbus`; `DBUS_SYSTEM_BUS_ADDRESS` points it at `scripts/fake-upower.py` for testing without a laptop.
 
 ## Proton
 A game's `runner.proton` (and `defaultProton`) may be a folder name (`GE-Proton11-7`), the internal name Steam uses (`proton-cachyos-11.0-20260703-slr-x86_64`) or a path; all resolve to the same build. Downloads go to the first Steam install's `compatibilitytools.d` (`~/.local/share/Steam/compatibilitytools.d` without Steam), where umu-run and Steam find them too.

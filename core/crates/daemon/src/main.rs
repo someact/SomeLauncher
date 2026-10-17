@@ -12,6 +12,7 @@ mod jobs;
 mod launch;
 mod meta;
 mod needs_steam;
+mod power;
 mod proton;
 mod rpc;
 mod server;
@@ -46,6 +47,7 @@ async fn main() -> Result<()> {
     if let Err(e) = state.recover().await {
         tracing::error!("recovering sessions: {e:#}");
     }
+    state.power_recover().await;
     if let Err(e) = state.check_screen().await {
         tracing::warn!("checking the screen size: {e:#}");
     }
