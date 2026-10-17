@@ -1,8 +1,9 @@
 //! Achievements (Phase 7): each game's list in the `achievements` table,
 //! read again from its source by [`State::refresh_achievements`]; a game's
 //! `achievements` field is the progress worked out from it on load.
-//! Sources: Steam (7a, `steam.rs`), gbe_fork/Goldberg saves (7b).
+//! Sources: Steam (7a, `steam.rs`), gbe_fork/Goldberg saves (7b, `gbe.rs`).
 
+pub mod gbe;
 pub mod steam;
 
 use crate::rpc::{State, internal};
@@ -94,28 +95,19 @@ impl State {
     /// `achievement.unlocked` for each new unlock. Ok(false) when no source knows the game.
     pub(crate) async fn refresh_achievements(&self, id: i64, api: bool) -> Result<bool> {
         let Some(game) = crate::games::get(&self.db.lock().unwrap(), id)? else { return Ok(false) };
-        let appid = game.sources.iter().find(|s| s.source == SourceKind::Steam).map(|s| s.source_id.clone()).or_else(|| game.meta.as_ref().and_then(|m| m.steam_appid.clone()));
-        // 7a: Steam games only (the Steam source, or a Steam game's own launcher entry)
-        let Some(appid) = appid.filter(|_| game.sources.iter().any(|s| s.source == SourceKind::Steam)) else { return Ok(false) };
-        let lang = steam::language(&self.home);
-        let account = self.steam_account();
-        let key = self.setting_str("steamApiKey")?.filter(|k| !k.is_empty());
-        let mut found = None;
-        if api && let (Some(key), Some(sid)) = (&key, &account) {
-            match steam::api(&self.http, key, sid, &appid, &lang).await {
-                Ok(l) => found = l.map(|l| ("steamApi", l)),
-                Err(e) => tracing::warn!(id, "achievements from the Web API: {e:#}"),
+        let found = if game.sources.iter().any(|s| s.source == SourceKind::Steam) {
+            let appid = game.sources.iter().find(|s| s.source == SourceKind::Steam).map(|s| s.source_id.clone()).unwrap_or_default();
+            self.steam_list(id, &appid, api).await?
+        } else if let Some(emu) = self.gbe_of(&game) {
+            let save = gbe::save_file(&emu, game.prefix.as_deref(), &self.home);
+            match gbe::read(&emu, save.as_deref())? {
+                Some(l) => Some(("gbe", l)),
+                // No list of its own: Steam's for its app id, with the emulator's unlocks
+                None => self.steam_list(id, &emu.appid, api).await?.map(|(_, l)| ("gbe", gbe::overlay(l, save.as_deref()))),
             }
-        }
-        if found.is_none() {
-            let acc = account.as_deref().and_then(steam::account_id);
-            for root in crate::import::steam::roots(&self.home) {
-                if let Some(l) = steam::local(&root, acc, &appid, &lang)? {
-                    found = Some(("steam", l));
-                    break;
-                }
-            }
-        }
+        } else {
+            None
+        };
         let Some((source, list)) = found.filter(|(_, l)| !l.is_empty()) else { return Ok(false) };
         let before = progress(&self.db.lock().unwrap(), id)?;
         let new = replace(&mut self.db.lock().unwrap(), id, source, &list)?;
@@ -128,7 +120,40 @@ impl State {
         Ok(true)
     }
 
-    /// Every game a source may know, as a background job (the Web API when the last pass is old)
+    /// The emulator in a non-Steam game's folder
+    pub(crate) fn gbe_of(&self, game: &somelauncher_proto::game::Game) -> Option<gbe::Emu> {
+        use somelauncher_proto::game::Kind;
+        if !matches!(game.kind, Kind::Proton | Kind::Native) {
+            return None;
+        }
+        gbe::find(game.install_dir.as_deref()?, game.exe.as_deref())
+    }
+
+    /// A Steam app's list: the Web API (with a key and `api`), else Steam's cache
+    async fn steam_list(&self, id: i64, appid: &str, api: bool) -> Result<Option<(&'static str, Vec<Achievement>)>> {
+        let lang = steam::language(&self.home);
+        let account = self.steam_account();
+        let key = self.setting_str("steamApiKey")?.filter(|k| !k.is_empty());
+        let mut found = None;
+        if api && let (Some(key), Some(sid)) = (&key, &account) {
+            match steam::api(&self.http, key, sid, appid, &lang).await {
+                Ok(l) => found = l.map(|l| ("steamApi", l)),
+                Err(e) => tracing::warn!(id, "achievements from the Web API: {e:#}"),
+            }
+        }
+        if found.is_none() {
+            let acc = account.as_deref().and_then(steam::account_id);
+            for root in crate::import::steam::roots(&self.home) {
+                if let Some(l) = steam::local(&root, acc, appid, &lang)? {
+                    found = Some(("steam", l));
+                    break;
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    /// Every game a source may know (Steam games, games with gbe_fork), as a background job (the Web API when the last pass is old)
     pub(crate) fn refresh_all_achievements(self: &Arc<Self>, force: bool) -> Result<String> {
         let last = crate::db::setting(&self.db.lock().unwrap(), "achievementsChecked")?.and_then(|v| v.as_i64()).unwrap_or(0);
         let api = force || crate::games::now() - last > STALE;
@@ -136,8 +161,11 @@ impl State {
         let state = Arc::downgrade(self);
         crate::jobs::spawn(self, &id, "Achievements", move |progress| async move {
             let Some(s) = state.upgrade() else { return Ok(()) };
-            let games: Vec<i64> =
-                crate::games::list(&s.db.lock().unwrap(), true)?.into_iter().filter(|g| g.sources.iter().any(|s| s.source == SourceKind::Steam)).map(|g| g.id).collect();
+            let games: Vec<i64> = crate::games::list(&s.db.lock().unwrap(), true)?
+                .into_iter()
+                .filter(|g| g.sources.iter().any(|s| s.source == SourceKind::Steam) || s.gbe_of(g).is_some())
+                .map(|g| g.id)
+                .collect();
             let has_key = s.setting_str("steamApiKey")?.is_some_and(|k| !k.is_empty());
             if api && has_key {
                 crate::db::set_setting(&s.db.lock().unwrap(), "achievementsChecked", &json!(crate::games::now()))?;
