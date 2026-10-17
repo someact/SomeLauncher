@@ -4,6 +4,7 @@
 //! the file, so a cleared cache is rebuilt from the origins.
 //! Automatic origins, best first: SteamGridDB, Steam's CDN, then what the
 //! importers found (Lutris' cover, Prism's and Twintail's icons, Twintail's background).
+//! Hoyo games get HoYoPlay's art (background, logo, icon) before all of these.
 
 use super::{sgdb, steam_store};
 use anyhow::{Context, Result, bail};
@@ -33,7 +34,8 @@ fn steam_icon(home: &Path, appid: &str) -> Option<PathBuf> {
 
 /// Every automatic origin for one kind, best first.
 pub async fn origins(http: &reqwest::Client, key: Option<&str>, home: &Path, game: &Game, kind: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    // Hoyo games: HoYoPlay's own art for the current version first
+    let mut out = crate::hoyo::art_origins(http, game, kind).await;
     let meta = game.meta.as_ref();
     if let (Some(key), Some(id)) = (key, meta.and_then(|m| m.sgdb_id.as_deref())) {
         match sgdb::images(http, key, sgdb_kind(kind), id).await {

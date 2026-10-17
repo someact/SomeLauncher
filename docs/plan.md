@@ -105,7 +105,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [~] 5e. SomeShell integration when present: island state for download progress and "Playing X" (IPC on the shell), an overlay card (recent games, playtime), `qs -c somelauncher ipc call ...` targets — not IPC on the shell: SomeShell reads somelauncherd's socket itself (`services/Launcher.qml`, SomeShell 13i), so the island and the card work while the launcher window is hidden or closed. Island: download progress, else "Playing X" with the session time (outside game mode, where the island is a dot); overlay: a Games card (the running game, session and total playtime, recent games). The launcher side is the `launcher` IPC target (open, toggle, hideWindow, page, game, add, play, state), which SomeShell's clicks call
 
 ## Phase 6: Hoyo games (Genshin Impact, Zenless Zone Zero)
-- [ ] 6a. HoYoPlay API client: games, branches (+ preload), background art (image and video), news and events, HoYoLAB links; global server first, CN later
+- [x] 6a. HoYoPlay API client: games, branches (+ preload), background art (image and video), news and events, HoYoLAB links; global server first, CN later — `hoyo.games`, `hoyo.content` (kept 10 minutes, the last answer when offline); CN uses its own host and launcher id and answers, but nothing CN is installed or played yet. HoYoPlay is also the first automatic art source for Hoyo games
 - [ ] 6b. Adopt existing installs (from 1d, or pick a folder): read the version from the game files
 - [ ] 6c. Sophon install: manifest, chunk download with resume, verify, extract, voice packs chosen by the user
 - [ ] 6d. Update: diff update when available, full otherwise; preload; repair (verify all files)

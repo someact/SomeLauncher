@@ -81,6 +81,8 @@ impl State {
                 "db": self.db_path,
             })),
             "power.status" => Ok(self.power_status().await),
+            "hoyo.games" => self.hoyo_games(params).await,
+            "hoyo.content" => self.hoyo_content(params).await,
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {

@@ -7,6 +7,7 @@ mod desktop;
 mod games;
 mod gpu;
 mod guess;
+mod hoyo;
 mod import;
 mod jobs;
 mod launch;

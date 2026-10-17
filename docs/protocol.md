@@ -81,6 +81,8 @@ On connect the daemon first sends `hello`:
 | `downloads.list` | — | running jobs `{id, label, done, total}` |
 | `downloads.cancel` | `{id}` | `null`; the job stops and its partial files are removed. Emits `download.done` with `error: "cancelled"` |
 | `power.status` | — | `{profiles, active, onBattery, battery, gaming, prefs}`: power-profiles-daemon's profiles (empty without it) and the active one, the laptop battery (`null` on a desktop: `{path, limitSupported, limitEnabled, limitStart, limitEnd}`), whether gaming mode is on (see Gaming mode), and the `gaming` setting with its defaults |
+| `hoyo.games` | `{region?, force?}`: `global` (default) or `cn` | the HoYoPlay games we support (Genshin Impact, Zenless Zone Zero): `{biz, id, name, region, logo, icon, background, backgrounds, main, preload, games}`. `main`/`preload` are branches `{packageId, branch, password, tag, diffTags, voices}` (`preload` only while there is one); `backgrounds` the launcher's `{image, video?, theme?}`, the current first (a `video` is a webm loop, `theme` a transparent picture over it); `games` the library ids of this game. Kept 10 minutes; `force` asks again. Error `network` |
+| `hoyo.content` | `{biz, force?}` | `{banners, posts, hoyolab, social}`: banners `{link, icon}` (`icon` is the image), posts `{kind, title, link, date}` (`kind`: `info`, `activity`, `announce`), the game's HoYoLAB (or Miyoushe) page, social links `{title, link, icon}`. Error `network` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events
@@ -109,7 +111,7 @@ On connect the daemon first sends `hello`:
 ```
 - `kind`: `steam` (run through Steam), `proton` (umu-run), `native`, `hoyo`, `minecraft` (a Prism instance).
 - `runner`: empty fields mean the global default and are left out of the JSON. Keys this daemon does not know are kept as they are.
-- `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Each is sized for this machine so Qt never holds a 4K decode: heroes at most the widest connected monitor's width (from `/sys/class/drm`), grids 600x900, logos 1280x640, icons 256x256, never enlarged; JPEG, or PNG when transparent. When the widest monitor changes, the next daemon start makes them all again from their origins. Automatic art comes, best first, from SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
+- `art`: `{hero, grid, logo, icon}`, cached files (`$XDG_CACHE_HOME/somelauncher/art/<id>/<kind>-<hash>.<ext>`, a new name whenever the art changes) or `null`. Each is sized for this machine so Qt never holds a 4K decode: heroes at most the widest connected monitor's width (from `/sys/class/drm`), grids 600x900, logos 1280x640, icons 256x256, never enlarged; JPEG, or PNG when transparent. When the widest monitor changes, the next daemon start makes them all again from their origins. Automatic art comes, best first, from HoYoPlay (Hoyo games: the current launcher background, the logo and icon), SteamGridDB, Steam's CDN (by the Steam app id), then the importers' files (Lutris covers, Prism and Twintail icons, Twintail backgrounds); a new match fetches it again.
 - `meta`: the metadata match (`null` until matched). The user confirms each from `meta.search`; Steam games match themselves on import. After an import, details and art for new games are fetched by background jobs. A match brings, in the background, `description`, `genres`, `features` (Steam's feature list), `steamTags` (Steam's user tags from SteamSpy), `developers`, `publishers`, `release`, and `categories`: the automatic library rows (`Co-op` for co-op games, then the main genre).
 - `tags`: automatic, recomputed whenever what they come from changes: `co-op`, `multiplayer`, `needs steam` (runner), `gacha` (hoyo), `modded` (XXMI on, or a Minecraft mod loader), the genres and Steam's top 6 user tags; lowercase.
 - `build`: `{recorded?, latest?, latestTime?, checked?, installed?, updateAvailable}`. Steam games: `installed` is the build in Steam's manifest, `latest` the latest public build (api.steamcmd.net, a mirror of Steam's PICS), and `updateAvailable` is true when they differ or Steam itself has an update waiting. Other games: `recorded` is the build the user notes (`recordedBuild` in `games.update`).
@@ -133,6 +135,7 @@ Daemon settings live in `library.db` and are changed only through `settings.set`
 | `buildsChecked` | when the last update check ran (the daemon keeps it) |
 | `gaming` | what gaming mode may change: `{powerProfile, chargeLimit}`, both `true` when unset |
 | `powerRestore` | what gaming mode changed and must undo (the daemon keeps it): `{profile: [before, set], limit: <battery path>}` |
+| `language` | the language for HoYoPlay's texts (`en-us`, `th-th`, …); the locale's when unset |
 | `steamId` | SteamID64 for the Web API; the account that logged in last when unset |
 
 ## Launching
