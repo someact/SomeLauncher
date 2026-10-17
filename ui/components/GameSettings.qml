@@ -213,7 +213,40 @@ Item {
                     SettingRow {
                         visible: !!root.game && root.game.kind === "hoyo"
                         title: "HoYoverse game"
-                        note: "Runs through Proton. Install, update and repair come with Phase 6."
+                        note: {
+                            const h = Library.hoyo(root.game);
+                            if (!h)
+                                return "Runs through Proton. Not adopted yet: its version is unknown";
+                            if (h.installing)
+                                return "Being installed: " + h.installing.version;
+                            return "Version " + (h.version ?? "unknown") + (h.voices && h.voices.length ? " · voices: " + h.voices.join(", ") : "") + ". Runs through Proton with Twintail's setup for it";
+                        }
+                    }
+                    SettingRow {
+                        id: graphics
+                        readonly property bool zzz: !!root.game && root.game.kind === "hoyo" && (Library.hoyo(root.game) ?? {}).biz !== undefined && Library.hoyo(root.game).biz.startsWith("nap")
+                        readonly property string flag: (root.runner.args ?? []).find(a => a.startsWith("-use-d3d")) ?? ""
+                        visible: zzz
+                        title: "Graphics API"
+                        note: "DirectX 12 can be faster on newer GPUs; DirectX 11 is the safe default"
+                        Segmented {
+                            options: [{ id: "dx11", name: "DirectX 11" }, { id: "dx12", name: "DirectX 12" }]
+                            current: graphics.flag === "-use-d3d12" ? "dx12" : graphics.flag === "-use-d3d11" ? "dx11" : (root.runner.graphicsApi ?? "dx11")
+                            // The choice is ours from now on: an imported flag in the arguments goes
+                            onPicked: id => {
+                                const args = (root.runner.args ?? []).filter(a => !a.startsWith("-use-d3d"));
+                                root.setRunner({ graphicsApi: id, args: args.length ? args : null });
+                            }
+                        }
+                    }
+                    SettingRow {
+                        visible: !!Library.hoyo(root.game) && !Library.hoyo(root.game).installing
+                        title: "Check and repair files"
+                        note: "Every file is checked against HoYoverse's list; damaged or missing ones are downloaded again"
+                        SmallButton {
+                            text: Library.job(root.game ? root.game.id : -1) ? "Running" : "Repair"
+                            onClicked: Daemon.call("hoyo.repair", { id: root.game.id }, (r, e) => root.error = e ? e.message : "")
+                        }
                     }
                     SettingRow {
                         visible: !!root.game && root.game.kind === "minecraft"

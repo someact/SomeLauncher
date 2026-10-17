@@ -101,6 +101,11 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
                     p
                 }
             };
+            // Genshin and ZZZ: Twintail's setup for them (hoyo/runner.rs)
+            if let Some(biz) = crate::hoyo::biz_of(game) {
+                crate::hoyo::runner::check_proton(&biz, &game.name, &proton.name)?;
+                env.extend(crate::hoyo::runner::env(&biz).into_iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            }
             env.insert("WINEPREFIX".into(), path_str(&prefix));
             env.insert("PROTONPATH".into(), path_str(&proton.dir));
             env.insert("GAMEID".into(), r.game_id.clone().unwrap_or_else(|| "umu-0".into()));
@@ -140,6 +145,9 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
         }
         Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 8c)"),
     };
+    if let Some(biz) = crate::hoyo::biz_of(game) {
+        argv.extend(crate::hoyo::runner::args(&biz, &r.args, r.extra.get("graphicsApi").and_then(|v| v.as_str())));
+    }
     argv.extend(r.args.iter().cloned());
     let argv = wrap(game, ctx, argv, &mut env)?;
     // The game's own env wins; overrides it sets are joined with ours

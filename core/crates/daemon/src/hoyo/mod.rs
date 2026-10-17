@@ -6,6 +6,7 @@ pub mod api;
 pub mod files;
 pub mod install;
 pub mod manage;
+pub mod runner;
 pub mod sophon;
 pub mod update;
 
