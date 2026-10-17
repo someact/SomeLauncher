@@ -332,6 +332,8 @@ impl State {
         self.emit("game.state", json!({ "id": id, "state": "running", "unit": unit, "since": since }));
         self.games_changed();
         let state = self.clone();
+        // gbe_fork games: their unlocks as they happen
+        let live = self.watch_achievements(id);
         tokio::spawn(async move {
             let mut beat = tokio::time::interval_at(tokio::time::Instant::now() + HEARTBEAT, HEARTBEAT);
             tokio::pin!(wait);
@@ -347,6 +349,9 @@ impl State {
             };
             if let Err(e) = &result {
                 tracing::warn!(id, "following the game: {e:#}");
+            }
+            if let Some(live) = live {
+                live.abort();
             }
             if let Err(e) = close(&state.db.lock().unwrap(), session, games::now()) {
                 tracing::error!(id, "closing the session: {e:#}");

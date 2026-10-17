@@ -125,6 +125,9 @@ ShellRoot {
         }
     }
 
+    // gbe_fork unlocks while a game runs, over the game (its own layer surface)
+    AchievementToast {}
+
     FloatingWindow {
         id: win
         title: "SomeLauncher"

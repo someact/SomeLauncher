@@ -4,6 +4,7 @@
 //! Sources: Steam (7a, `steam.rs`), gbe_fork/Goldberg saves (7b, `gbe.rs`).
 
 pub mod gbe;
+pub mod live;
 pub mod steam;
 
 use crate::rpc::{State, internal};

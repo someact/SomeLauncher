@@ -113,7 +113,7 @@ On connect the daemon first sends `hello`:
 | `download.done` | `{id, label, error?}` |
 | `game.state` | `{id, state, unit?, step?}`: `starting` (with `step: "steam"` while waiting for Steam), `running` (with its systemd unit, or `steam:<appid>`, and `since`) or `stopped` (with `error` when it failed to start) |
 | `library.changed` | `{ids, removed?}`: these games changed (or were removed); fetch them again |
-| `achievement.unlocked` | `{id, game, achievement, source}`: an achievement found newly unlocked by a refresh (`achievement` as in `achievements.list`); not sent when a game's list is first filled |
+| `achievement.unlocked` | `{id, game, achievement, source}`: an achievement found newly unlocked by a refresh (`achievement` as in `achievements.list`); not sent when a game's list is first filled. gbe_fork games are refreshed live while they run (their save folder watched with inotify), so for them it comes as the unlock happens; the UI shows it over the game |
 | `power.changed` | `{gaming}`: gaming mode went on (the first game started) or off (the last one ended) |
 
 ## Game
