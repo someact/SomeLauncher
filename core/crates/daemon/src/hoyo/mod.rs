@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use somelauncher_proto::Error;
 use somelauncher_proto::game::{Game, Kind, NewGame, Source, SourceKind};
 use std::path::Path;
+use std::sync::Arc;
 
 /// The game's exe for each biz
 pub const EXES: &[(&str, &str)] =
@@ -87,7 +88,7 @@ impl State {
     /// update and run; its version and voice packs are read from its files.
     /// A library game in that folder (from Twintail, or added by hand) is kept
     /// and gets our source; otherwise a new game is added.
-    pub(crate) fn hoyo_adopt(&self, params: &Value) -> Result<Value, Error> {
+    pub(crate) fn hoyo_adopt(self: &Arc<Self>, params: &Value) -> Result<Value, Error> {
         let given = params["id"].as_i64();
         let path = match (params["path"].as_str(), given) {
             (Some(p), _) => Path::new(p).to_path_buf(),
@@ -97,8 +98,19 @@ impl State {
         let install = files::detect(&path).ok_or_else(|| Error::new("not_found", format!("no Genshin Impact or Zenless Zone Zero in {}", path.display())))?;
         let id = self.adopt(&install, given).map_err(internal)?;
         self.emit("library.changed", json!({ "ids": [id] }));
+        self.art_later(id);
         let game = self.game(&self.db.lock().unwrap(), id)?;
         Ok(json!(game))
+    }
+
+    /// HoYoPlay's art for a game just adopted or being installed, in the background
+    pub(crate) fn art_later(self: &Arc<Self>, id: i64) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = state.refresh_art(id, false).await {
+                tracing::warn!(id, "art: {e:#}");
+            }
+        });
     }
 
     pub(crate) fn adopt(&self, install: &files::Install, id: Option<i64>) -> anyhow::Result<i64> {

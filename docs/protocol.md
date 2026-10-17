@@ -41,6 +41,8 @@ On connect the daemon first sends `hello`:
 | `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
 | `network` | a web service failed or refused (the message says which) |
+| `update_required` | a Hoyo game is behind HoYoPlay's version: update it before playing |
+| `not_installed` | the game is still being installed |
 | `no_space` | the disk has too little free space for it (the message says how much) |
 | `internal` | the daemon failed (the message says why; the log has more) |
 
@@ -57,7 +59,7 @@ On connect the daemon first sends `hello`:
 | `games.update` | `{id, …fields}`: any of `name kind installDir exe prefix runner categories recordedBuild favorite hidden` | the game. A path set to `null` is cleared; `runner` is replaced whole. Emits `library.changed` |
 | `games.remove` | `{id}` | `null`. Emits `library.changed` with `removed: true` |
 | `games.plan` | `{id}` | what launching would run, without running it: `{argv, env, cwd, newPrefix?, preLaunch?, postExit?}` (`env` is only what we add to the daemon's) |
-| `games.launch` | `{id}` | `{unit, log}` once the game is started in its own systemd scope. Errors: `launch_failed` (why, e.g. no Proton or umu-run), `busy` (already running). Emits `game.state` |
+| `games.launch` | `{id}` | `{unit, log}` once the game is started in its own systemd scope. Errors: `launch_failed` (why, e.g. no Proton or umu-run), `busy` (already running, or a Hoyo game's update or repair runs), `update_required` (a Hoyo game behind HoYoPlay's version, checked right then; offline it plays), `not_installed`. Emits `game.state` |
 | `games.stop` | `{id}` | `null`: SIGTERM to the game's whole process tree (its scope, or everything under a Steam game's reaper), SIGKILL 10 s later if it still runs. `not_running` when it is not |
 | `games.running` | — | running and starting games: `[{id, unit, since}]` (`since` is `null` while Steam has not started it yet); what a client that just connected needs |
 | `games.logs` | `{id}` | the game's last 3 logs, newest first: `[{path, time, size}]` |
@@ -91,6 +93,7 @@ On connect the daemon first sends `hello`:
 | `hoyo.update` | `{id}` | `{id}` of the job (`hoyo-<game id>`): a diff update (each changed file's HDiff patch cut from its bundle by a range request, applied with `hpatchz`, md5-checked, then swapped in; preloaded patches are taken from disk) or a full one (files whose md5 changed between the installed and new manifests fetched again); files the new version drops are deleted; then the version is read again. Resumes from a log. `hpatchz` is the one on PATH, else HDiffPatch v5.1.3 fetched once (checksum pinned) into `$XDG_DATA_HOME/somelauncher/tools`. Errors `busy` (it runs, or another job on it), `bad_params` (up to date) |
 | `hoyo.preload` | `{id}` | `{id}` of the job: the next version's patches fetched into `<dir>/.somelauncher/preload-<version>/`; the game is not touched until its update |
 | `hoyo.repair` | `{id}` | `{id}` of the job: every file md5-checked against the installed version's manifest (progress through the check), then the bad ones fetched again and swapped in |
+| `hoyo.check` | `{force?}` | ids of the games whose `build.latest` changed: HoYoPlay's current version for every installed Hoyo game (`updateAvailable` follows). Done when the daemon starts, by the UI when it opens, and by `games.launch` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events

@@ -15,12 +15,14 @@ Singleton {
     property var games: []
     property var byId: ({})
     property var running: ({})
+    property var jobs: ({})               // job id → {label, done, total}: installs, updates, art (download.* events)
     // A game is being played (not just starting): the UI pauses its motion (core/Motion.qml)
     readonly property bool playing: Object.keys(running).some(id => running[id].state === "running")
     property bool loaded: false
     // A game went from starting (or nothing) to running while we watched; not
     // for games found running on connect
     signal gameStarted(int id)
+    signal jobFailed(string id, string error)
     // Unix seconds, renewed with each change: what "2 days ago" is counted from
     property real now: Date.now() / 1000
 
@@ -31,6 +33,16 @@ Singleton {
             root._set(list);
             root.loaded = true;
         });
+        Daemon.call("downloads.list", undefined, (list, error) => {
+            if (error)
+                return;
+            const j = {};
+            for (const d of list)
+                j[d.id] = d;
+            root.jobs = j;
+        });
+        // Is a new Hoyo version out: asked each time the launcher opens (the daemon also asks at its start)
+        Daemon.call("hoyo.check", { force: true }, undefined);
         Daemon.call("games.running", undefined, (list, error) => {
             if (error)
                 return;
@@ -90,6 +102,16 @@ Singleton {
                 for (const id of data.ids)
                     root._changed[id] = true;
                 gather.restart();
+            } else if (name === "download.progress") {
+                const j = Object.assign({}, root.jobs);
+                j[data.id] = data;
+                root.jobs = j;
+            } else if (name === "download.done") {
+                const j = Object.assign({}, root.jobs);
+                delete j[data.id];
+                root.jobs = j;
+                if (data.error && data.error !== "cancelled")
+                    root.jobFailed(data.id, data.error);
             } else if (name === "game.state") {
                 const was = root.running[data.id];
                 const r = Object.assign({}, root.running);
@@ -113,6 +135,15 @@ Singleton {
     }
     function stop(id) {
         Daemon.call("games.stop", { id }, undefined);
+    }
+    // A game's own job (Hoyo install, update, preload, repair), or null
+    function job(id) {
+        return jobs["hoyo-" + id] ?? null;
+    }
+    // The `hoyo` source of an installed or installing Hoyo game, or null
+    function hoyo(g) {
+        const s = g && g.sources ? g.sources.find(s => s.source === "hoyo") : null;
+        return s ? s.data : null;
     }
     function setFavorite(id, on) {
         update(id, { favorite: on });

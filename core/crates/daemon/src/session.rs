@@ -198,6 +198,7 @@ impl State {
         if self.running.lock().unwrap().contains_key(&id) {
             return Err(Error::new("busy", format!("{} is already running", game.name)));
         }
+        self.hoyo_gate(&game).await?;
         let plan = launch::plan(&game, &self.launch_context().map_err(internal)?).map_err(failed)?;
         if game.kind == Kind::Steam {
             return self.launch_steam(game, plan).await;

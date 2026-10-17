@@ -180,3 +180,60 @@ impl State {
         })
     }
 }
+
+impl State {
+    /// `hoyo.check {force?}`: HoYoPlay's current version as every installed
+    /// Hoyo game's `build.latest` (so `updateAvailable` says it, as for Steam
+    /// games). At daemon start, when the UI opens, and before Play.
+    pub(crate) async fn hoyo_check(&self, force: bool) -> Result<Vec<i64>> {
+        let games: Vec<Game> = crate::games::list(&self.db.lock().unwrap(), true)?
+            .into_iter()
+            .filter(|g| g.sources.iter().any(|s| s.source == SourceKind::Hoyo && s.data["installing"].is_null()))
+            .collect();
+        let mut changed = Vec::new();
+        for region in [api::Region::Global, api::Region::Cn] {
+            let mine: Vec<&Game> = games.iter().filter(|g| super::biz_of(g).is_some_and(|b| api::Region::of(&b) == region)).collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let list = api::games(&self.http, region, &self.hoyo_language(), force).await?;
+            for g in mine {
+                let biz = super::biz_of(g).unwrap_or_default();
+                let Some(latest) = list.iter().find(|a| a.biz == biz).and_then(|a| a.main.as_ref()).map(|b| b.tag.clone()) else { continue };
+                let db = self.db.lock().unwrap();
+                let Some(mut fresh) = crate::games::get(&db, g.id)? else { continue };
+                if fresh.build.latest.as_deref() != Some(&latest) {
+                    fresh.build.latest = Some(latest);
+                    fresh.build.checked = Some(crate::games::now());
+                    crate::games::save(&db, &fresh)?;
+                    changed.push(g.id);
+                }
+            }
+        }
+        if !changed.is_empty() {
+            self.emit("library.changed", json!({ "ids": changed }));
+        }
+        Ok(changed)
+    }
+
+    /// Before Play: a Hoyo game must be the current version (the servers refuse
+    /// an old client). Offline, it plays: nothing says it is behind.
+    pub(crate) async fn hoyo_gate(&self, game: &Game) -> Result<(), Error> {
+        let Some(src) = game.sources.iter().find(|s| s.source == SourceKind::Hoyo) else { return Ok(()) };
+        if !src.data["installing"].is_null() {
+            return Err(Error::new("not_installed", format!("{} is not installed yet", game.name)));
+        }
+        if self.jobs.list().iter().any(|j| j.id == format!("hoyo-{}", game.id)) {
+            return Err(Error::new("busy", format!("{} is being updated or repaired", game.name)));
+        }
+        if let Err(e) = tokio::time::timeout(std::time::Duration::from_secs(8), self.hoyo_check(true)).await.unwrap_or_else(|_| Err(anyhow::anyhow!("timed out"))) {
+            tracing::warn!(id = game.id, "update check before Play: {e:#}; playing anyway");
+            return Ok(());
+        }
+        let g = self.game(&self.db.lock().unwrap(), game.id)?;
+        match (&g.build.installed, &g.build.latest) {
+            (Some(i), Some(l)) if i != l => Err(Error::new("update_required", format!("{} {l} is out (installed: {i}); update it first", g.name))),
+            _ => Ok(()),
+        }
+    }
+}

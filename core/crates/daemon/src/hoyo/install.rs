@@ -124,6 +124,7 @@ impl State {
 
         let id = self.installing_game(&biz, &dir, &exe, &branch.tag, &voices).map_err(internal)?;
         self.emit("library.changed", json!({ "ids": [id] }));
+        self.art_later(id);
         let label = format!("Installing {} {}", name_of(&biz), branch.tag);
         let job = format!("hoyo-{id}");
         let state = self.clone();

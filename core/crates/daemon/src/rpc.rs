@@ -90,6 +90,7 @@ impl State {
             "hoyo.update" => self.hoyo_update(params).await,
             "hoyo.preload" => self.hoyo_preload(params).await,
             "hoyo.repair" => self.hoyo_repair(params).await,
+            "hoyo.check" => Ok(json!(self.hoyo_check(params["force"].as_bool().unwrap_or(true)).await.map_err(|e| Error::new("network", format!("{e:#}")))?)),
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {

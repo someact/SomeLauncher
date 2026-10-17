@@ -56,6 +56,13 @@ async fn main() -> Result<()> {
     if let Err(e) = state.check_builds_if_stale() {
         tracing::warn!("checking for updates: {e:#}");
     }
+    // Hoyo games: is a new version out (in the background, the network may be slow)
+    let hoyo = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = hoyo.hoyo_check(true).await {
+            tracing::warn!("checking Hoyo versions: {e:#}");
+        }
+    });
     let result = server::serve(listener, state).await;
     let _ = std::fs::remove_file(&socket);
     tracing::info!("stopped");
