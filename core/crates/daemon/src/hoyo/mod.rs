@@ -3,24 +3,28 @@
 //! launcher API.
 
 pub mod api;
+pub mod files;
 
 use crate::rpc::{State, internal};
 use serde_json::{Value, json};
 use somelauncher_proto::Error;
-use somelauncher_proto::game::{Game, Kind};
+use somelauncher_proto::game::{Game, Kind, NewGame, Source, SourceKind};
+use std::path::Path;
 
 /// The game's exe for each biz
 pub const EXES: &[(&str, &str)] =
     &[("hk4e_global", "GenshinImpact.exe"), ("hk4e_cn", "YuanShen.exe"), ("nap_global", "ZenlessZoneZero.exe"), ("nap_cn", "ZenlessZoneZero.exe")];
 
 /// Which HoYoPlay game a library game is: what a source recorded (`data.biz`,
-/// Twintail's or an adopted install's), else its exe's name (global for ZZZ,
-/// whose exe is the same in both regions)
+/// ours first, then Twintail's), else its exe's name (global for ZZZ, whose
+/// exe is the same in both regions)
 pub fn biz_of(game: &Game) -> Option<String> {
     if game.kind != Kind::Hoyo {
         return None;
     }
-    if let Some(b) = game.sources.iter().find_map(|s| s.data["biz"].as_str().filter(|b| !b.is_empty())) {
+    let mut sources: Vec<&Source> = game.sources.iter().collect();
+    sources.sort_by_key(|s| s.source != SourceKind::Hoyo);
+    if let Some(b) = sources.iter().find_map(|s| s.data["biz"].as_str().filter(|b| !b.is_empty())) {
         return Some(b.to_string());
     }
     let exe = game.exe.as_ref()?.file_name()?.to_str()?;
@@ -61,6 +65,76 @@ impl State {
         let force = params["force"].as_bool().unwrap_or(false);
         let c = api::content(&self.http, biz, &self.hoyo_language(), force).await.map_err(network)?;
         serde_json::to_value(c).map_err(|e| internal(e.into()))
+    }
+}
+
+pub fn name_of(biz: &str) -> &'static str {
+    if api::game_of(biz) == "nap" { "Zenless Zone Zero" } else { "Genshin Impact" }
+}
+
+impl State {
+    /// `hoyo.adopt {path}` or `{id}`: an install already on disk becomes ours to
+    /// update and run; its version and voice packs are read from its files.
+    /// A library game in that folder (from Twintail, or added by hand) is kept
+    /// and gets our source; otherwise a new game is added.
+    pub(crate) fn hoyo_adopt(&self, params: &Value) -> Result<Value, Error> {
+        let given = params["id"].as_i64();
+        let path = match (params["path"].as_str(), given) {
+            (Some(p), _) => Path::new(p).to_path_buf(),
+            (None, Some(id)) => self.game(&self.db.lock().unwrap(), id)?.install_dir.ok_or_else(|| Error::new("not_found", format!("game {id} has no install folder")))?,
+            _ => return Err(Error::new("bad_params", "give `path` or `id`")),
+        };
+        let install = files::detect(&path).ok_or_else(|| Error::new("not_found", format!("no Genshin Impact or Zenless Zone Zero in {}", path.display())))?;
+        let id = self.adopt(&install, given).map_err(internal)?;
+        self.emit("library.changed", json!({ "ids": [id] }));
+        let game = self.game(&self.db.lock().unwrap(), id)?;
+        Ok(json!(game))
+    }
+
+    pub(crate) fn adopt(&self, install: &files::Install, id: Option<i64>) -> anyhow::Result<i64> {
+        let db = self.db.lock().unwrap();
+        let existing = match id {
+            Some(id) => Some(id),
+            None => crate::games::list(&db, true)?.into_iter().find(|g| g.kind == Kind::Hoyo && g.install_dir.as_deref() == Some(&install.dir)).map(|g| g.id),
+        };
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let mut n = NewGame::new(name_of(&install.biz), Kind::Hoyo);
+                n.install_dir = Some(install.dir.clone());
+                n.exe = Some(install.exe.clone());
+                crate::games::insert(&db, &n)?
+            }
+        };
+        let data = json!({ "biz": install.biz, "version": install.version, "voices": install.voices });
+        crate::games::set_source(&db, id, &Source { source: SourceKind::Hoyo, source_id: install.biz.clone(), data })?;
+        crate::meta::tags::retag(&db, id)?;
+        tracing::info!(id, biz = install.biz, version = ?install.version, "adopted {}", install.dir.display());
+        Ok(id)
+    }
+
+    /// Every Hoyo game with an install folder: its version read again from its files
+    pub(crate) fn adopt_all(&self) -> Vec<i64> {
+        let games = match crate::games::list(&self.db.lock().unwrap(), true) {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::error!("listing games: {e:#}");
+                return Vec::new();
+            }
+        };
+        let mut changed = Vec::new();
+        for g in games.into_iter().filter(|g| g.kind == Kind::Hoyo) {
+            let Some(install) = g.install_dir.as_deref().and_then(files::detect) else { continue };
+            let before = g.sources.iter().find(|s| s.source == SourceKind::Hoyo).map(|s| s.data.clone());
+            let after = json!({ "biz": install.biz, "version": install.version, "voices": install.voices });
+            if before.as_ref() != Some(&after) {
+                match self.adopt(&install, Some(g.id)) {
+                    Ok(id) => changed.push(id),
+                    Err(e) => tracing::warn!(id = g.id, "adopting: {e:#}"),
+                }
+            }
+        }
+        changed
     }
 }
 

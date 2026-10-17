@@ -83,6 +83,7 @@ impl State {
             "power.status" => Ok(self.power_status().await),
             "hoyo.games" => self.hoyo_games(params).await,
             "hoyo.content" => self.hoyo_content(params).await,
+            "hoyo.adopt" => self.hoyo_adopt(params),
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {
@@ -344,6 +345,8 @@ impl State {
                 errors.insert(source.clone(), json!(format!("{e:#}")));
             }
         }
+        // Hoyo games found (Twintail's): their versions from their own files
+        summary.updated.extend(self.adopt_all().into_iter().filter(|id| !summary.added.contains(id)));
         // Steam games need no confirmation: their app id is the match
         let matched = crate::meta::match_steam_games(&self.db.lock().unwrap()).map_err(internal)?;
         let new_matches = !matched.is_empty();

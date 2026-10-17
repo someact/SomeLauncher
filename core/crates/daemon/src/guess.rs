@@ -247,6 +247,16 @@ fn game_dir(exe: &Path) -> PathBuf {
 }
 
 pub fn guess(path: &Path) -> Option<Guess> {
+    // Genshin Impact and Zenless Zone Zero are Hoyo games: adopted (`hoyo.adopt`), not added as Windows games
+    if let Some(h) = crate::hoyo::files::detect(path) {
+        return Some(Guess {
+            name: crate::hoyo::name_of(&h.biz).into(),
+            kind: Kind::Hoyo,
+            install_dir: h.dir,
+            exe: Some(h.exe.clone()),
+            candidates: vec![h.exe],
+        });
+    }
     let (dir, exe, candidates) = if path.is_dir() {
         let folder = path.file_name()?.to_string_lossy().into_owned();
         let mut found: Vec<_> = executables(path)

@@ -47,12 +47,15 @@ fn from_row(row: &Row) -> rusqlite::Result<Game> {
     })
 }
 
-/// What `build` works out from the sources: the installed Steam build, and
+/// What `build` works out from the sources: the installed Steam build (or a
+/// Hoyo game's version), and
 /// whether a newer one is out (or Steam itself has an update waiting).
 fn fill_build(g: &mut Game) {
     let steam = g.sources.iter().find(|s| s.source == SourceKind::Steam);
     let installed = steam.filter(|s| s.data["installed"] == true).and_then(|s| s.data["buildid"].as_str()).filter(|b| !b.is_empty() && *b != "0");
-    g.build.installed = installed.map(String::from);
+    // A Hoyo game: the version read from its files
+    let hoyo = g.sources.iter().find(|s| s.source == SourceKind::Hoyo).and_then(|s| s.data["version"].as_str());
+    g.build.installed = installed.or(hoyo).map(String::from);
     // StateFlags bit 2: update required
     let steam_says = steam.is_some_and(|s| s.data["installed"] == true && s.data["stateFlags"].as_i64().unwrap_or(0) & 2 != 0);
     let newer = matches!((&g.build.installed, &g.build.latest), (Some(i), Some(l)) if i != l);

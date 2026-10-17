@@ -47,6 +47,9 @@ pub enum SourceKind {
     Prism,
     /// Added by hand or found by a folder scan
     Manual,
+    /// A Genshin Impact or Zenless Zone Zero install SomeLauncher manages (Phase 6):
+    /// source id is the HoYoPlay biz, `data` `{biz, version, voices}`
+    Hoyo,
 }
 
 impl SourceKind {
@@ -57,6 +60,7 @@ impl SourceKind {
             SourceKind::Twintail => "twintail",
             SourceKind::Prism => "prism",
             SourceKind::Manual => "manual",
+            SourceKind::Hoyo => "hoyo",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {

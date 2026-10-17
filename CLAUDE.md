@@ -10,7 +10,7 @@ The original idea is `SomeLauncher.md`. Decisions, architecture and the task tra
 ## Commands
 ```sh
 scripts/dev.sh build            # cargo build of core/ (debug)
-scripts/dev.sh test             # cargo tests; one test: scripts/dev.sh test -p somelauncherd settings_set
+scripts/dev.sh test             # cargo tests; one test: scripts/dev.sh test -p somelauncherd settings_set (builds the test binary only: `build` before running the daemon)
 scripts/dev.sh daemon           # somelauncherd in the foreground, debug log on the terminal
 scripts/dev.sh ui [page]        # the UI from ui/ against the debug daemon (home online library minecraft settings); SOMELAUNCHER_GAME=<id> also opens that game's page
 scripts/dev.sh check [secs]     # load the UI and print QML warnings/errors; must print nothing

@@ -106,7 +106,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 
 ## Phase 6: Hoyo games (Genshin Impact, Zenless Zone Zero)
 - [x] 6a. HoYoPlay API client: games, branches (+ preload), background art (image and video), news and events, HoYoLAB links; global server first, CN later — `hoyo.games`, `hoyo.content` (kept 10 minutes, the last answer when offline); CN uses its own host and launcher id and answers, but nothing CN is installed or played yet. HoYoPlay is also the first automatic art source for Hoyo games
-- [ ] 6b. Adopt existing installs (from 1d, or pick a folder): read the version from the game files
+- [x] 6b. Adopt existing installs (from 1d, or pick a folder): read the version from the game files — `hoyo.adopt`; the version is Unity's bundle version in `globalgamemanagers` (Twintail leaves `config.ini` stale: 7.0.0 there, 7.1.0 installed), voice packs from `Persistent/audio_lang_*`, region from the exe (ZZZ: `version_info`). Twintail's installs are adopted after each import; the add wizard adopts a picked Genshin/ZZZ folder in one step. Checked on both real installs
 - [ ] 6c. Sophon install: manifest, chunk download with resume, verify, extract, voice packs chosen by the user
 - [ ] 6d. Update: diff update when available, full otherwise; preload; repair (verify all files)
 - [ ] 6e. Check for updates at launcher start and before Play, and block Play on a version mismatch with an "Update" button

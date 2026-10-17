@@ -46,6 +46,18 @@ Dialog {
     }
 
     function use(g) {
+        // Genshin Impact or ZZZ: adopted as it is, its version read from its files (6b)
+        if (g.kind === "hoyo") {
+            busy = true;
+            Daemon.call("hoyo.adopt", { path: g.installDir }, (game, e) => {
+                busy = false;
+                if (e)
+                    error = e.message;
+                else
+                    root.added(game.id);
+            });
+            return;
+        }
         name = g.name;
         guess = g;
         exe = g.exe ?? "";
