@@ -84,6 +84,15 @@ pub fn apply(conn: &mut Connection, found: Vec<Found>) -> Result<Summary> {
         g.playtime = g.playtime.max(n.playtime);
         g.last_played = g.last_played.max(n.last_played);
         if let Some(src) = g.sources.iter_mut().find(|s| s.source == kind && s.source_id == sid) {
+            // A source that names its games (`data.name`, Prism): a rename there follows
+            // here, unless the game was renamed here since
+            let (was, now) = (src.data["name"].as_str(), f.source.data["name"].as_str());
+            if let (Some(was), Some(now)) = (was, now)
+                && was == g.name
+                && now != was
+            {
+                g.name = now.to_string();
+            }
             src.data = f.source.data.clone();
         }
         if g != old {
@@ -165,6 +174,25 @@ mod tests {
 
         apply(&mut conn, vec![found("1", "/b", 120, true)]).unwrap();
         assert_eq!(games::get(&conn, id).unwrap().unwrap().install_dir.unwrap().to_str(), Some("/b"));
+    }
+
+    #[test]
+    fn a_source_rename_follows_unless_renamed_here() {
+        let mut conn = games::test_db();
+        let named = |name: &str| {
+            let mut f = found("vibe", "/i/vibe", 0, true);
+            f.game.name = name.into();
+            f.source.data = json!({ "name": name });
+            f
+        };
+        let id = apply(&mut conn, vec![named("Vibe")]).unwrap().added[0];
+        apply(&mut conn, vec![named("Vibe 2")]).unwrap();
+        assert_eq!(games::get(&conn, id).unwrap().unwrap().name, "Vibe 2");
+        let mut g = games::get(&conn, id).unwrap().unwrap();
+        g.name = "Mine".into();
+        games::save(&conn, &g).unwrap();
+        apply(&mut conn, vec![named("Vibe 3")]).unwrap();
+        assert_eq!(games::get(&conn, id).unwrap().unwrap().name, "Mine");
     }
 
     #[test]

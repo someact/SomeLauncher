@@ -62,6 +62,8 @@ async fn main() -> Result<()> {
     if let Err(e) = state.refresh_all_achievements(false) {
         tracing::warn!("achievements: {e:#}");
     }
+    // Instances made or changed in Prism show up by themselves
+    state.watch_prism();
     // Hoyo games: is a new version out (in the background, the network may be slow)
     let hoyo = state.clone();
     tokio::spawn(async move {

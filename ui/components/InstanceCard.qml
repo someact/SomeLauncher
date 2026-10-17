@@ -3,7 +3,7 @@ import qs.core
 
 // One Minecraft instance in the Minecraft page's column: its icon, name and
 // `26.2 · Fabric`; filled when `selected`, a dot while it runs. A click picks
-// it (`picked`), a double click plays it (`play`).
+// it (`picked`), a double click plays it (`play`), a right click is `rightClicked`.
 PressButton {
     id: root
 

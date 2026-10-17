@@ -125,6 +125,7 @@ pub fn scan(home: &Path) -> Result<Vec<Found>> {
             let key = get("iconKey");
             let game_dir = game_dir(&dir);
             let data = json!({
+                "name": name,
                 "root": root,
                 "flatpak": flatpak,
                 "group": groups.get(&id),

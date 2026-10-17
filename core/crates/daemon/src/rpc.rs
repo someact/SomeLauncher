@@ -344,7 +344,7 @@ impl State {
     }
 
     /// Runs the importers; one failing does not stop the others.
-    async fn import(self: &Arc<Self>, params: &Value) -> Result<Value, Error> {
+    pub(crate) async fn import(self: &Arc<Self>, params: &Value) -> Result<Value, Error> {
         let all = ["steam", "lutris", "twintail", "prism"];
         let sources: Vec<String> = match params.get("sources") {
             Some(v) => parse(v)?,
@@ -360,7 +360,7 @@ impl State {
                 "steam" => self.import_steam(&mut summary).await,
                 "lutris" => import::lutris::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
                 "twintail" => import::twintail::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
-                "prism" => import::prism::scan(&self.home).and_then(|f| self.apply(f, &mut summary)),
+                "prism" => self.import_prism(&mut summary),
                 _ => unreachable!(),
             };
             if let Err(e) = result {
@@ -414,6 +414,18 @@ impl State {
                 d.insert("installed".into(), json!(false));
             }
         })?;
+        summary.added.extend(s.added);
+        summary.updated.extend(s.updated.into_iter().chain(gone));
+        Ok(())
+    }
+
+    /// Prism's instances; one deleted in Prism keeps its game (and playtime) without its folder
+    fn import_prism(&self, summary: &mut import::Summary) -> anyhow::Result<()> {
+        let found = import::prism::scan(&self.home)?;
+        let seen = found.iter().map(|f| f.source.source_id.clone()).collect();
+        let mut db = self.db.lock().unwrap();
+        let s = import::apply(&mut db, found)?;
+        let gone = import::sweep(&mut db, SourceKind::Prism, &seen, |g, _| g.install_dir = None)?;
         summary.added.extend(s.added);
         summary.updated.extend(s.updated.into_iter().chain(gone));
         Ok(())

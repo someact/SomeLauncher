@@ -7,14 +7,16 @@ import qs.components
 // a column of instance cards in Prism's groups (folding, remembered) with a
 // search (typing anywhere starts it); right, the picked instance: its banner
 // with Play, then its tabs. Up and Down move through the column, Enter plays.
-// New instances and accounts are Prism's until Phase 10: + opens it.
+// New instances and accounts are Prism's until Phase 10: + opens it, a right
+// click opens an instance in it; what changes there shows here by itself.
 Item {
     id: root
 
     focus: true
 
     readonly property string query: search.text.trim().toLowerCase()
-    readonly property var instances: Library.games.filter(g => g.kind === "minecraft")
+    // An instance deleted in Prism keeps its game (and playtime) in the Library, not here
+    readonly property var instances: Library.games.filter(g => g.kind === "minecraft" && !!g.installDir)
     readonly property var collapsed: Config.minecraft.collapsed ?? []
 
     // [{name, ids}]: Prism's groups by name, the instances without one first.
@@ -227,6 +229,8 @@ Item {
                                             root.forceActiveFocus();
                                         }
                                         onPlay: root.play(modelData)
+                                        // Rename, copy, regroup, delete: Prism's, on this instance
+                                        onRightClicked: Daemon.call("minecraft.prism", { id: modelData }, undefined)
                                     }
                                 }
                             }

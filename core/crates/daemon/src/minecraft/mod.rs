@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use somelauncher_proto::Error;
 use somelauncher_proto::game::{Game, Kind, SourceKind};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 const FLATPAK_ID: &str = "org.prismlauncher.PrismLauncher";
@@ -271,7 +272,62 @@ pub async fn wait_started(game_dir: &Path) -> Result<i32> {
     find_java(game_dir).context("the game exited right away")
 }
 
+/// Waits until Prism changes its instances: one made, copied or deleted (the
+/// instances folders), regrouped (`instgroups.json`), or edited (an instance's
+/// `instance.cfg` or `mmc-pack.json`, also written when a game starts and ends).
+async fn wait_prism_change(dirs: &[PathBuf]) -> Result<()> {
+    use futures_util::StreamExt;
+    use inotify::{Inotify, WatchMask};
+    let inotify = Inotify::init()?;
+    let mut top = std::collections::HashSet::new();
+    let mask = WatchMask::CREATE | WatchMask::DELETE | WatchMask::MOVED_FROM | WatchMask::MOVED_TO | WatchMask::CLOSE_WRITE;
+    for dir in dirs {
+        top.insert(inotify.watches().add(dir, mask)?);
+        for sub in std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+            let _ = inotify.watches().add(&sub, WatchMask::CLOSE_WRITE | WatchMask::MOVED_TO);
+        }
+    }
+    let mut events = inotify.into_event_stream([0u8; 4096])?;
+    while let Some(ev) = events.next().await {
+        let ev = ev?;
+        let name = ev.name.as_deref().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let relevant = if top.contains(&ev.wd) {
+            ev.mask.contains(inotify::EventMask::ISDIR) || name == "instgroups.json"
+        } else {
+            name == "instance.cfg" || name == "mmc-pack.json"
+        };
+        if relevant {
+            return Ok(());
+        }
+    }
+    anyhow::bail!("the watch ended")
+}
+
 impl State {
+    /// Follows Prism's instances folders and imports Prism again a moment after
+    /// each change, so what is made, edited or deleted in Prism shows here
+    pub fn watch_prism(self: &Arc<Self>) {
+        let dirs: Vec<PathBuf> = crate::import::prism::installs(&self.home).into_iter().map(|(_, i)| i).filter(|i| i.is_dir()).collect();
+        if dirs.is_empty() {
+            return;
+        }
+        let state = self.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = wait_prism_change(&dirs).await {
+                    tracing::warn!("watching Prism's instances: {e:#}");
+                    return;
+                }
+                // Prism writes several files at once: let it finish
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tracing::debug!("Prism's instances changed");
+                if let Err(e) = state.import(&json!({ "sources": ["prism"] })).await {
+                    tracing::warn!("importing Prism again: {}", e.message);
+                }
+            }
+        });
+    }
+
     fn instance(&self, params: &Value) -> Result<(Game, Instance), Error> {
         let id = params["id"].as_i64().ok_or_else(|| Error::new("bad_params", "missing integer `id`"))?;
         let game = self.game(&self.db.lock().unwrap(), id)?;
