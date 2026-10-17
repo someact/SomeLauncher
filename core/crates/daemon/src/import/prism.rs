@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// `[section]` + `key=value` lines as Qt's QSettings writes them; sections are ignored.
-fn ini(text: &str) -> HashMap<String, String> {
+pub fn ini(text: &str) -> HashMap<String, String> {
     text.lines()
         .filter_map(|l| l.split_once('='))
         .map(|(k, v)| {
@@ -26,7 +26,7 @@ fn ini(text: &str) -> HashMap<String, String> {
 }
 
 /// Prism data dirs (native, flatpak) with their instances dir.
-fn installs(home: &Path) -> Vec<(PathBuf, PathBuf)> {
+pub fn installs(home: &Path) -> Vec<(PathBuf, PathBuf)> {
     [".local/share/PrismLauncher", ".var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher"]
         .iter()
         .map(|d| home.join(d))

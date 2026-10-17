@@ -7,7 +7,7 @@ import Quickshell
 // `all` (every game by name, hidden ones too), `games` (the visible ones),
 // `byId`, and `running` (id → the latest `game.state`). Pages derive their rows as lists of ids and bind each card to
 // `Library.byId[id]`, so a changed game updates its card without rebuilding the row.
-//   Library.play(id, error => …)   Library.stop(id)   Library.update(id, {fields}, error => …)
+//   Library.play(id, error => …, {world})   Library.stop(id)   Library.update(id, {fields}, error => …)
 Singleton {
     id: root
 
@@ -127,8 +127,9 @@ Singleton {
     }
     Component.onCompleted: if (Daemon.ready) refresh()
 
-    function play(id, done) {
-        Daemon.call("games.launch", { id }, (r, error) => {
+    // `extra`: games.launch's other params (a Minecraft world or server to join)
+    function play(id, done, extra) {
+        Daemon.call("games.launch", Object.assign({ id }, extra ?? {}), (r, error) => {
             if (done)
                 done(error);
         });

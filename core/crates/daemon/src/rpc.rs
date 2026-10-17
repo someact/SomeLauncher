@@ -92,6 +92,8 @@ impl State {
             "xxmi.setMod" => self.xxmi_set_mod(params),
             "xxmi.importTwintail" => self.xxmi_import_twintail(params).await,
             "minecraft.prism" => self.minecraft_prism(params),
+            "minecraft.instance" => self.minecraft_instance(params),
+            "minecraft.accounts" => self.minecraft_accounts(params),
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,
@@ -177,7 +179,7 @@ impl State {
                 let ctx = self.launch_context().map_err(internal)?;
                 to_json(launch::plan(&game, &ctx).map_err(|e| Error::new("launch_failed", format!("{e:#}")))?)
             }
-            "games.launch" => self.launch(id_param(params)?).await,
+            "games.launch" => self.launch(id_param(params)?, params).await,
             "games.stop" => self.stop(id_param(params)?).await,
             "games.running" => Ok(self.running_games()),
             "games.logs" => {
@@ -448,6 +450,8 @@ impl State {
     pub(crate) fn launch_context(&self) -> anyhow::Result<launch::Context> {
         let game_dirs: Vec<PathBuf> =
             crate::db::setting(&self.db.lock().unwrap(), "gameDirs")?.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        // Before the literal below: the db lock its `defaults` takes lasts to the end of it
+        let minecraft_account = self.setting_str("minecraftAccount")?;
         Ok(launch::Context {
             protons: proton::discover(&self.home),
             default_proton: self.setting_str("defaultProton")?,
@@ -462,6 +466,8 @@ impl State {
             tools: launch::WRAPPERS.iter().filter(|t| launch::which(t).is_some()).map(|t| t.to_string()).collect(),
             monitor: crate::monitor::current(),
             xxmi: crate::hoyo::xxmi::dir(),
+            home: self.home.clone(),
+            minecraft_account,
         })
     }
 

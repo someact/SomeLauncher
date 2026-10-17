@@ -26,6 +26,9 @@ pub struct Context {
     pub monitor: Option<crate::monitor::Monitor>,
     /// Where XXMI lives (hoyo/xxmi.rs), for Hoyo games with mods on
     pub xxmi: PathBuf,
+    pub home: PathBuf,
+    /// The Prism account Minecraft instances play with (`minecraftAccount`); Prism's active one when None
+    pub minecraft_account: Option<String>,
 }
 
 /// The wrapper programs `tools` is filled with.
@@ -145,7 +148,8 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
                 post_exit: r.post_exit.clone(),
             });
         }
-        Kind::Minecraft => bail!("Minecraft instances are launched through Prism (Phase 8c)"),
+        // Prism starts the game with its own Java and settings
+        Kind::Minecraft => return crate::minecraft::plan(game, &ctx.home, ctx.minecraft_account.as_deref()),
     };
     if let Some(biz) = crate::hoyo::biz_of(game) {
         argv.extend(crate::hoyo::runner::args(&biz, &r.args, r.extra.get("graphicsApi").and_then(|v| v.as_str())));
@@ -381,6 +385,8 @@ mod tests {
             tools: WRAPPERS.iter().map(|t| t.to_string()).collect(),
             monitor: Some(crate::monitor::Monitor { name: "DP-1".into(), width: 2560, height: 1440, refresh: 144 }),
             xxmi: "/nonexistent/xxmi".into(),
+            home: "/nonexistent/home".into(),
+            minecraft_account: None,
         }
     }
 

@@ -24,6 +24,7 @@ libc = "0.2.190"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 md-5 = "0.11.0"
 zstd = "0.14.3"
+flate2 = "1.1.10"
 zip = { version = "9.0.4", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]

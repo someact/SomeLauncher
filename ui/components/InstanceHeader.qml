@@ -3,19 +3,24 @@ import QtQuick.Effects
 import Quickshell.Widgets
 import qs.core
 
-// The Minecraft page's banner for one instance: a picture (`image`, else the
-// instance's icon blurred into a wash of its colors), the icon, name, version
-// and loader chips, playtime and last played, and Play. `extra` goes top right.
+// The Minecraft page's banner for one instance: a picture (`image`: a picked
+// one or the newest screenshot), else `wash` (the last played world's icon)
+// or the instance's icon blurred into a wash of its colors; the icon, name,
+// version and loader chips, playtime and last played, and Play. The page puts
+// the account menu over its top right.
 ClippingRectangle {
     id: root
 
     property var game: null
-    property string image: ""                 // a screenshot or world icon (file URL), when there is one
-    default property alias extra: corner.data
+    property string image: ""                 // a picked picture or a screenshot (URL), when there is one
+    property string wash: ""                  // a small picture to blur when there is no `image`
     readonly property var prism: Library.prism(game)
     readonly property alias play: playButton
     // Too narrow for Play beside the title: it goes under it
     readonly property bool narrow: width < 620
+    // The least height that fits it all under the account menu (`topInset`)
+    property real topInset: 64
+    readonly property real neededHeight: topInset + title.height + (narrow ? playButton.height + Theme.space.l : 0) + Theme.space.xl
 
     radius: Theme.radius.xl
     color: Theme.surfaceHigh
@@ -24,7 +29,7 @@ ClippingRectangle {
     Image {
         id: wash
         anchors.fill: parent
-        source: root.image === "" ? Library.art(root.game, "icon") : ""
+        source: root.image === "" ? root.wash || Library.art(root.game, "icon") : ""
         sourceSize: Qt.size(64, 64)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -76,15 +81,6 @@ ClippingRectangle {
             GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.45) }
             GradientStop { position: 0.6; color: "transparent" }
         }
-    }
-
-    Item {
-        id: corner
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: Theme.space.l
-        width: childrenRect.width
-        height: childrenRect.height
     }
 
     Row {

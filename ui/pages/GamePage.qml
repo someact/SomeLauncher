@@ -297,6 +297,17 @@ FocusScope {
                         icon: "settings"
                         onClicked: root.openSettings()
                     }
+                    // A Minecraft instance: its worlds, mods and settings are on the Minecraft page
+                    HeroButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !!root.game && root.game.kind === "minecraft"
+                        icon: "deployed_code"
+                        onClicked: {
+                            const id = root.game.id;
+                            Nav.closeGame();
+                            Nav.showInstance(id);
+                        }
+                    }
                     HeroButton {
                         anchors.verticalCenter: parent.verticalCenter
                         icon: "favorite"

@@ -16,6 +16,16 @@ Singleton {
     property rect from: Qt.rect(0, 0, 0, 0)    // scene coordinates; empty: the page fades instead
     property real fromRadius: 0
     property bool adding: false                // the add-game wizard is open
+    // Another page asked for (shell.qml switches to it): a Minecraft game page opens its instance
+    signal pageRequested(string page)
+
+    function goTo(page) {
+        pageRequested(page);
+    }
+    function showInstance(id) {
+        Config.minecraft.selected = id;
+        goTo("minecraft");
+    }
 
     function addGame() {
         adding = true;

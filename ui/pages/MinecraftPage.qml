@@ -249,6 +249,36 @@ Item {
 
     // --- the picked instance
 
+    // What its files hold (`minecraft.instance`): read when it is picked and
+    // after each session (new worlds and screenshots)
+    property var info: null
+    property string tab: "overview"
+    function load() {
+        const id = selectedId;
+        if (id < 0) {
+            info = null;
+            return;
+        }
+        Daemon.call("minecraft.instance", { id }, (r, e) => {
+            if (id === root.selectedId)
+                root.info = r ?? null;
+        });
+    }
+    onSelectedIdChanged: {
+        info = null;
+        load();
+    }
+    Component.onCompleted: load()
+    readonly property bool selectedRuns: selectedId in Library.running
+    onSelectedRunsChanged: if (!selectedRuns) load()
+    Connections {
+        target: Daemon
+        function onReadyChanged() {
+            if (Daemon.ready)
+                root.load();
+        }
+    }
+
     Item {
         id: detail
         anchors.left: column.right
@@ -262,23 +292,90 @@ Item {
         InstanceHeader {
             id: header
             width: parent.width
-            height: Math.max(240, Math.min(360, parent.height * 0.42))
+            height: Math.max(neededHeight, Math.min(340, parent.height * 0.4))
             game: root.game
+            // A picture the user picked (the game's hero art), else the newest screenshot
+            image: Library.art(root.game, "hero") || (root.info && root.info.screenshots.length ? Paths.url(root.info.screenshots[0].path) : "")
+            wash: root.info && root.info.worlds.length && root.info.worlds[0].icon ? Paths.url(root.info.worlds[0].icon) : ""
         }
-        SText {
+
+        Item {
+            id: bar
             anchors.top: header.bottom
-            anchors.topMargin: Theme.space.m
+            anchors.topMargin: Theme.space.l
             width: parent.width
-            visible: header.play.error !== ""
-            text: header.play.error
-            color: Theme.error
-            wrapMode: Text.Wrap
-            maximumLineCount: 3
+            height: tabs.height
+            Segmented {
+                id: tabs
+                options: [{ id: "overview", name: "Overview" }, { id: "mods", name: "Mods" }, { id: "settings", name: "Settings" }, { id: "files", name: "Files" }]
+                current: root.tab
+                onPicked: id => root.tab = id
+            }
+            SText {
+                anchors.left: tabs.right
+                anchors.leftMargin: Theme.space.l
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: header.play.error !== ""
+                text: header.play.error
+                color: Theme.error
+                elide: Text.ElideRight
+            }
+        }
+
+        Item {
+            id: body
+            anchors.top: bar.bottom
+            anchors.topMargin: Theme.space.l
+            anchors.bottom: parent.bottom
+            width: parent.width
+            clip: true
+
+            InstanceOverview {
+                anchors.fill: parent
+                visible: root.tab === "overview"
+                game: root.game
+                info: root.info
+                onPlay: extra => Library.play(root.selectedId, e => header.play.error = e ? e.message : "", extra)
+                onShowShot: i => viewer.index = i
+            }
+            InstanceFiles {
+                anchors.fill: parent
+                visible: root.tab === "files"
+                game: root.game
+                info: root.info
+            }
+            Placeholder {
+                anchors.fill: parent
+                visible: root.tab === "mods" || root.tab === "settings"
+                icon: root.tab === "mods" ? "extension" : "tune"
+                title: root.tab === "mods" ? "Mods" : "Settings"
+                note: "Coming next (Phase " + (root.tab === "mods" ? "8d" : "8e") + ")"
+            }
+        }
+
+        // Over the banner's top right; it unfolds over what is below
+        AccountMenu {
+            anchors.right: header.right
+            anchors.top: header.top
+            anchors.margins: Theme.space.l
+            gameId: root.selectedId
+        }
+    }
+
+    ScreenshotViewer {
+        id: viewer
+        anchors.fill: parent
+        shots: root.info ? root.info.screenshots : []
+        onCloseRequested: {
+            index = -1;
+            root.forceActiveFocus();
         }
     }
 
     Placeholder {
         anchors.fill: detail
+        z: -1
         visible: Library.loaded && root.instances.length === 0
         icon: "deployed_code"
         title: "Minecraft"

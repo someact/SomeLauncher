@@ -39,6 +39,12 @@ ShellRoot {
                 Nav.openGame(parseInt(Quickshell.env("SOMELAUNCHER_GAME")), null);
         }
     }
+    Connections {
+        target: Nav
+        function onPageRequested(id) {
+            app.page = id;
+        }
+    }
     // Pages enter from the side of the rail they come from: lower ones rise, higher ones drop
     property int enterFrom: 1
     property int _lastIndex: 0

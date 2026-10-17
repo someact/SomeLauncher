@@ -6,7 +6,7 @@
 //! counts, not only the process we started.
 
 use crate::rpc::{State, internal};
-use crate::{games, import, launch, needs_steam, steam_client, watch};
+use crate::{games, import, launch, minecraft, needs_steam, steam_client, watch};
 use anyhow::{Context as _, Result, anyhow};
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
@@ -29,6 +29,8 @@ pub enum Track {
     Scope(String),
     /// A Steam game, by app id
     Steam(String),
+    /// A Prism instance, by its game folder: its `java` process
+    Prism(PathBuf),
 }
 
 impl Track {
@@ -36,12 +38,16 @@ impl Track {
         match self {
             Track::Scope(u) => u.clone(),
             Track::Steam(appid) => format!("steam:{appid}"),
+            Track::Prism(dir) => format!("prism:{}", dir.display()),
         }
     }
     fn parse(unit: &str) -> Track {
-        match unit.strip_prefix("steam:") {
-            Some(appid) => Track::Steam(appid.into()),
-            None => Track::Scope(unit.into()),
+        if let Some(appid) = unit.strip_prefix("steam:") {
+            Track::Steam(appid.into())
+        } else if let Some(dir) = unit.strip_prefix("prism:") {
+            Track::Prism(dir.into())
+        } else {
+            Track::Scope(unit.into())
         }
     }
 }
@@ -193,7 +199,8 @@ fn failed(e: anyhow::Error) -> Error {
 }
 
 impl State {
-    pub(crate) async fn launch(self: &Arc<Self>, id: i64) -> Result<Value, Error> {
+    /// `games.launch {id, world?, server?}` (`world`/`server`: a Minecraft instance joins it)
+    pub(crate) async fn launch(self: &Arc<Self>, id: i64, params: &Value) -> Result<Value, Error> {
         let mut game = self.game(&self.db.lock().unwrap(), id)?;
         if self.running.lock().unwrap().contains_key(&id) {
             return Err(Error::new("busy", format!("{} is already running", game.name)));
@@ -202,6 +209,9 @@ impl State {
         let plan = launch::plan(&game, &self.launch_context().map_err(internal)?).map_err(failed)?;
         if game.kind == Kind::Steam {
             return self.launch_steam(game, plan).await;
+        }
+        if game.kind == Kind::Minecraft {
+            return self.launch_prism(game, plan, params).await;
         }
         if let Some(prefix) = &plan.new_prefix {
             std::fs::create_dir_all(prefix).map_err(|e| failed(anyhow!("creating {}: {e}", prefix.display())))?;
@@ -288,6 +298,57 @@ impl State {
                 Ok(reaper) => {
                     tracing::info!(id, reaper, "{} is running", game.name);
                     if let Err(e) = state.follow(id, track, steam_client::wait_pid(reaper), async {}) {
+                        tracing::error!(id, "{e:#}");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(id, "{}: {e:#}", game.name);
+                    state.running.lock().unwrap().remove(&id);
+                    state.emit("game.state", json!({ "id": id, "state": "stopped", "error": format!("{e:#}") }));
+                    state.games_changed();
+                }
+            }
+        });
+        Ok(json!({ "unit": unit }))
+    }
+
+    /// A Minecraft instance: Prism starts it (`-l`), handing it to an already
+    /// open Prism when there is one, so the game may not start under us. It is
+    /// followed by its `java` process instead, from start to exit.
+    async fn launch_prism(self: &Arc<Self>, game: Game, mut plan: launch::Plan, params: &Value) -> Result<Value, Error> {
+        let id = game.id;
+        let inst = minecraft::Instance::of(&game).ok_or_else(|| failed(anyhow!("{} is not a Prism instance", game.name)))?;
+        if minecraft::find_java(&inst.game_dir).is_some() {
+            return Err(Error::new("busy", format!("{} is already running", game.name)));
+        }
+        if let Some(world) = params["world"].as_str().filter(|w| !w.is_empty()) {
+            plan.argv.extend(["-w".to_string(), world.to_string()]);
+        } else if let Some(server) = params["server"].as_str().filter(|s| !s.is_empty()) {
+            plan.argv.extend(["-s".to_string(), server.to_string()]);
+        }
+        let track = Track::Prism(inst.game_dir.clone());
+        let unit = track.unit();
+        self.running.lock().unwrap().insert(id, Running { track: track.clone(), since: None });
+        if let Err(e) = minecraft::spawn_scoped(&plan.argv) {
+            self.running.lock().unwrap().remove(&id);
+            return Err(failed(e));
+        }
+        self.emit("game.state", json!({ "id": id, "state": "starting" }));
+        self.games_changed();
+        tracing::info!(id, argv = ?plan.argv, "asked Prism to start {}", game.name);
+
+        let state = self.clone();
+        tokio::spawn(async move {
+            let started = minecraft::wait_started(&inst.game_dir).await;
+            // Stopped while it was starting: let it be
+            let waiting = state.running.lock().unwrap().get(&id).is_some_and(|r| r.since.is_none() && matches!(r.track, Track::Prism(_)));
+            if !waiting {
+                return;
+            }
+            match started {
+                Ok(java) => {
+                    tracing::info!(id, java, "{} is running", game.name);
+                    if let Err(e) = state.follow(id, track, steam_client::wait_pid(java), async {}) {
                         tracing::error!(id, "{e:#}");
                     }
                 }
@@ -390,6 +451,25 @@ impl State {
                     }
                 });
             }
+            Track::Prism(dir) => {
+                let Some(java) = minecraft::find_java(&dir) else {
+                    // Still starting: stop waiting for it
+                    self.running.lock().unwrap().remove(&id);
+                    self.emit("game.state", json!({ "id": id, "state": "stopped" }));
+                    self.games_changed();
+                    return Ok(Value::Null);
+                };
+                signal(&[java], libc::SIGTERM);
+                let state = self.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(STOP_GRACE).await;
+                    if state.running.lock().unwrap().contains_key(&id) {
+                        let mut pids = descendants(java);
+                        pids.push(java);
+                        signal(&pids, libc::SIGKILL);
+                    }
+                });
+            }
             Track::Steam(appid) => {
                 let reaper = steam_client::find_reaper(&appid).ok_or_else(|| Error::new("not_running", "Steam has not started it yet"))?;
                 signal(&descendants(reaper), libc::SIGTERM);
@@ -429,6 +509,7 @@ impl State {
                     None => None,
                 },
                 Track::Steam(appid) => steam_client::find_reaper(appid).map(|pid| Box::pin(steam_client::wait_pid(pid)) as _),
+                Track::Prism(dir) => minecraft::find_java(dir).map(|pid| Box::pin(steam_client::wait_pid(pid)) as _),
             };
             match alive {
                 Some(wait) => {
@@ -484,6 +565,8 @@ mod tests {
         assert!(matches!(Track::parse("steam:480"), Track::Steam(a) if a == "480"));
         assert!(matches!(Track::parse("somelauncher-game-1-2.scope"), Track::Scope(u) if u == "somelauncher-game-1-2.scope"));
         assert_eq!(Track::Steam("480".into()).unit(), "steam:480");
+        let prism = Track::Prism("/p/instances/Vibe/minecraft".into());
+        assert!(matches!(Track::parse(&prism.unit()), Track::Prism(d) if d == Path::new("/p/instances/Vibe/minecraft")));
     }
 
     #[test]
