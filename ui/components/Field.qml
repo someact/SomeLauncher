@@ -10,6 +10,7 @@ Rectangle {
     property string value
     property string placeholder
     property bool mono: false
+    property bool secret: false              // an API key: shown only while edited
     property alias text: input.text
     readonly property bool active: input.activeFocus
     signal committed(string text)
@@ -41,6 +42,7 @@ Rectangle {
         selectionColor: Theme.primaryContainer
         selectedTextColor: Theme.fgPrimaryContainer
         selectByMouse: true
+        echoMode: root.secret ? TextInput.PasswordEchoOnEdit : TextInput.Normal
         font.family: root.mono ? Theme.font.mono : Theme.font.ui
         font.pixelSize: root.mono ? Theme.font.normal - 1 : Theme.font.normal
         font.weight: Theme.font.weight
