@@ -38,7 +38,9 @@ pub fn compute(game: &Game) -> Vec<String> {
     if game.kind == Kind::Hoyo {
         add("gacha");
     }
-    let modded = game.sources.iter().any(|s| s.data["xxmi"] == true || s.data["loader"].is_string());
+    // XXMI on in our runner (Twintail's own switch is not ours), or a Minecraft mod loader
+    let xxmi = game.kind == Kind::Hoyo && game.runner.extra.get("xxmi").and_then(|v| v.as_bool()) == Some(true);
+    let modded = xxmi || game.sources.iter().any(|s| s.data["loader"].is_string());
     if modded {
         add("modded");
     }
@@ -102,6 +104,8 @@ mod tests {
 
         let mut zzz = Game::new(3, NewGame::new("Zenless Zone Zero", Kind::Hoyo));
         zzz.sources.push(Source { source: SourceKind::Twintail, source_id: "z".into(), data: serde_json::json!({ "xxmi": true }) });
+        assert_eq!(compute(&zzz), ["gacha"], "Twintail's XXMI switch is not ours");
+        zzz.runner.extra.insert("xxmi".into(), serde_json::json!(true));
         assert_eq!(compute(&zzz), ["gacha", "modded"]);
     }
 

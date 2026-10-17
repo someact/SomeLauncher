@@ -10,6 +10,7 @@ pub mod media;
 pub mod runner;
 pub mod sophon;
 pub mod update;
+pub mod xxmi;
 
 use crate::rpc::{State, internal};
 use serde_json::{Value, json};
@@ -173,6 +174,90 @@ impl State {
             }
         }
         changed
+    }
+}
+
+/// XXMI (6h): the packages, and each game's mods
+impl State {
+    fn xxmi_package(params: &Value) -> Result<&'static str, Error> {
+        let biz = params["biz"].as_str().ok_or_else(|| Error::new("bad_params", "missing string `biz`"))?;
+        xxmi::importer_of(biz).ok_or_else(|| Error::new("bad_params", format!("no XXMI package for {biz}")))
+    }
+
+    /// `xxmi.status {force?}`: what is installed, what is out, each package's state
+    pub(crate) async fn xxmi_status(&self, params: &Value) -> Result<Value, Error> {
+        let root = xxmi::dir();
+        let installed = xxmi::installed(&root);
+        let (latest, error) = match xxmi::latest(&self.http, params["force"].as_bool().unwrap_or(false)).await {
+            Ok(l) => (Some(l), None),
+            Err(e) => (None, Some(format!("{e:#}"))),
+        };
+        let outdated = latest.as_ref().map(|l| xxmi::outdated(&installed, l));
+        let packages: serde_json::Map<String, Value> = ["gimi", "zzmi"]
+            .iter()
+            .map(|imp| {
+                let mods = root.join(imp).join("Mods");
+                let v = json!({
+                    "ready": xxmi::ready(&root, imp),
+                    "mods": mods,
+                    "count": xxmi::list(&mods).len(),
+                    "twintail": !xxmi::twintail_dirs(&self.home, imp).is_empty(),
+                });
+                (imp.to_string(), v)
+            })
+            .collect();
+        Ok(json!({
+            "dir": root,
+            "installed": installed,
+            "latest": latest.map(|l| l.into_iter().map(|(k, r)| (k, r.tag)).collect::<std::collections::BTreeMap<_, _>>()),
+            "outdated": outdated,
+            "error": error,
+            "packages": packages,
+        }))
+    }
+
+    /// `xxmi.update`: fetches what is missing or behind, a background job
+    pub(crate) fn xxmi_update(self: &Arc<Self>) -> Result<Value, Error> {
+        let http = self.http.clone();
+        crate::jobs::spawn(self, "xxmi", "Updating XXMI", move |progress| async move {
+            xxmi::update(&http, &xxmi::dir(), &progress).await.map(|_| ())
+        })
+        .map_err(|e| Error::new("busy", format!("{e:#}")))?;
+        Ok(json!({ "id": "xxmi" }))
+    }
+
+    /// `xxmi.mods {biz}`: the game's mods folder and its mods
+    pub(crate) fn xxmi_mods(&self, params: &Value) -> Result<Value, Error> {
+        let imp = Self::xxmi_package(params)?;
+        let mods = xxmi::dir().join(imp).join("Mods");
+        Ok(json!({ "package": imp, "dir": mods, "mods": xxmi::list(&mods) }))
+    }
+
+    /// `xxmi.setMod {biz, folder, enabled}`: renames the mod's folder; `{folder}` its new name
+    pub(crate) fn xxmi_set_mod(&self, params: &Value) -> Result<Value, Error> {
+        let imp = Self::xxmi_package(params)?;
+        let folder = params["folder"].as_str().ok_or_else(|| Error::new("bad_params", "missing string `folder`"))?;
+        let on = params["enabled"].as_bool().ok_or_else(|| Error::new("bad_params", "missing bool `enabled`"))?;
+        let to = xxmi::set_enabled(&xxmi::dir().join(imp).join("Mods"), folder, on).map_err(|e| Error::new("bad_params", format!("{e:#}")))?;
+        Ok(json!({ "folder": to }))
+    }
+
+    /// `xxmi.importTwintail {biz}`: Twintail's mods for the game copied into ours
+    pub(crate) async fn xxmi_import_twintail(&self, params: &Value) -> Result<Value, Error> {
+        let imp = Self::xxmi_package(params)?;
+        let theirs = xxmi::twintail_dirs(&self.home, imp);
+        let ours = xxmi::dir().join(imp);
+        let copied = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<String>> {
+            let mut all = Vec::new();
+            for t in theirs {
+                all.extend(xxmi::import_from(&t, &ours)?);
+            }
+            Ok(all)
+        })
+        .await
+        .map_err(|e| internal(e.into()))?
+        .map_err(internal)?;
+        Ok(json!({ "copied": copied }))
     }
 }
 

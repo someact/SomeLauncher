@@ -151,7 +151,7 @@ Item {
             x: Theme.space.xl
             anchors.top: header.bottom
             anchors.topMargin: Theme.space.l
-            options: [{ id: "simple", name: "Simple" }, { id: "advanced", name: "Advanced" }]
+            options: [{ id: "simple", name: "Simple" }, { id: "advanced", name: "Advanced" }].concat(root.game && root.game.kind === "hoyo" ? [{ id: "mods", name: "Mods" }] : [])
             current: root.tab
             onPicked: id => root.tab = id
         }
@@ -178,7 +178,7 @@ Item {
             x: Theme.space.xl
             width: parent.width - Theme.space.xl * 2
             clip: true
-            contentHeight: (root.tab === "simple" ? simple.implicitHeight : advanced.implicitHeight) + Theme.space.xl
+            contentHeight: (root.tab === "simple" ? simple.implicitHeight : root.tab === "mods" ? mods.implicitHeight : advanced.implicitHeight) + Theme.space.xl
             boundsBehavior: Flickable.StopAtBounds
             onContentHeightChanged: if (contentY > Math.max(0, contentHeight - height)) contentY = Math.max(0, contentHeight - height)
 
@@ -354,6 +354,16 @@ Item {
                     text: "Nothing to set here yet."
                     dim: true
                 }
+            }
+
+            // Mods (Hoyo games: XXMI)
+            HoyoMods {
+                id: mods
+                width: flick.width
+                visible: root.tab === "mods"
+                shown: root.open && visible
+                game: root.game
+                onRunnerPatch: patch => root.setRunner(patch)
             }
 
             // Advanced

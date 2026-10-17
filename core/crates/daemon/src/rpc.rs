@@ -84,6 +84,11 @@ impl State {
             "hoyo.games" => self.hoyo_games(params).await,
             "hoyo.content" => self.hoyo_content(params).await,
             "hoyo.media" => self.hoyo_media(params).await,
+            "xxmi.status" => self.xxmi_status(params).await,
+            "xxmi.update" => self.xxmi_update(),
+            "xxmi.mods" => self.xxmi_mods(params),
+            "xxmi.setMod" => self.xxmi_set_mod(params),
+            "xxmi.importTwintail" => self.xxmi_import_twintail(params).await,
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,
@@ -453,6 +458,7 @@ impl State {
             offload: crate::gpu::offload(Path::new("/sys/class/drm")),
             tools: launch::WRAPPERS.iter().filter(|t| launch::which(t).is_some()).map(|t| t.to_string()).collect(),
             monitor: crate::monitor::current(),
+            xxmi: crate::hoyo::xxmi::dir(),
         })
     }
 

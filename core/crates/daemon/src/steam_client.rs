@@ -49,7 +49,7 @@ pub fn run(home: &Path, flatpak: bool, args: &[String]) -> Result<()> {
     argv.extend(args.iter().cloned());
     let unit = format!("--unit=somelauncher-steam-{}-{}", crate::games::now(), std::process::id());
     let mut cmd = tokio::process::Command::new("systemd-run");
-    cmd.args(["--user", "--scope", "--collect", "--quiet", &unit, "--"]).args(&argv);
+    cmd.args(["--user", "--scope", "--collect", "--quiet", "--expand-environment=no", &unit, "--"]).args(&argv);
     cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     // Not waited for: systemd-run stays the parent until that process quits, and tokio reaps it then
     cmd.spawn().context("running steam")?;

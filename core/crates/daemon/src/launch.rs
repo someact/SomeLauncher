@@ -24,6 +24,8 @@ pub struct Context {
     pub tools: std::collections::BTreeSet<String>,
     /// The monitor the game starts on: gamescope's sizes and the FPS cap follow it
     pub monitor: Option<crate::monitor::Monitor>,
+    /// Where XXMI lives (hoyo/xxmi.rs), for Hoyo games with mods on
+    pub xxmi: PathBuf,
 }
 
 /// The wrapper programs `tools` is filled with.
@@ -149,6 +151,16 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
         argv.extend(crate::hoyo::runner::args(&biz, &r.args, r.extra.get("graphicsApi").and_then(|v| v.as_str())));
     }
     argv.extend(r.args.iter().cloned());
+    // XXMI: its loader beside the game, inside the same wrappers
+    if game.kind == Kind::Hoyo && r.extra.get("xxmi").and_then(|v| v.as_bool()) == Some(true) {
+        let biz = crate::hoyo::biz_of(game).unwrap_or_default();
+        let package = crate::hoyo::xxmi::importer_of(&biz).ok_or_else(|| anyhow!("{} has no XXMI package", game.name))?;
+        if !crate::hoyo::xxmi::ready(&ctx.xxmi, package) {
+            bail!("XXMI is not installed yet: update it in the game's settings (Mods), or turn mods off");
+        }
+        let umu = argv[0].clone();
+        argv = crate::hoyo::xxmi::wrap(&ctx.xxmi, package, &umu, argv, &mut env);
+    }
     let argv = wrap(game, ctx, argv, &mut env)?;
     // The game's own env wins; overrides it sets are joined with ours
     for (k, v) in &r.env {
@@ -318,6 +330,8 @@ pub fn spawn(plan: &Plan, unit: &str, description: &str, log: &std::fs::File) ->
                 "--scope".into(),
                 "--collect".into(),
                 "--quiet".into(),
+                // The command line as it is: systemd would read `$X` (and `$$`) in it as its own
+                "--expand-environment=no".into(),
                 format!("--unit={unit}"),
                 format!("--description={description}"),
                 "--".into(),
@@ -366,7 +380,33 @@ mod tests {
             offload: None,
             tools: WRAPPERS.iter().map(|t| t.to_string()).collect(),
             monitor: Some(crate::monitor::Monitor { name: "DP-1".into(), width: 2560, height: 1440, refresh: 144 }),
+            xxmi: "/nonexistent/xxmi".into(),
         }
+    }
+
+    #[test]
+    fn xxmi_runs_its_loader_inside_the_wrappers() {
+        let mut g = game(Kind::Hoyo);
+        g.name = "Genshin Impact".into();
+        g.exe = Some("/g/Genshin Impact/GenshinImpact.exe".into());
+        g.runner.proton = Some("GE-Proton11-7".into());
+        g.runner.mangohud = Some(true);
+        g.runner.extra.insert("xxmi".into(), serde_json::json!(true));
+        assert!(plan(&g, &ctx()).unwrap_err().to_string().contains("XXMI is not installed"));
+
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        std::fs::create_dir_all(root.join("gimi")).unwrap();
+        for f in ["3dmloader.exe", "gimi/d3dx.ini", "gimi/d3d11.dll", "gimi/d3dcompiler_47.dll"] {
+            std::fs::write(root.join(f), b"").unwrap();
+        }
+        let c = Context { xxmi: root.into(), ..ctx() };
+        let p = plan(&g, &c).unwrap();
+        assert_eq!(&p.argv[..3], ["mangohud", "sh", "-c"]);
+        assert_eq!(&p.argv[5..], ["/usr/bin/umu-run", "/g/Genshin Impact/GenshinImpact.exe"]);
+        assert_eq!(p.env["SOMELAUNCHER_XXMI_PACKAGE"], "gimi");
+        g.runner.extra.insert("xxmi".into(), serde_json::json!(false));
+        assert_eq!(plan(&g, &c).unwrap().argv[1], "/usr/bin/umu-run");
     }
 
     #[test]

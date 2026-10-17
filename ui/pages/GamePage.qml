@@ -442,6 +442,8 @@ FocusScope {
             chips.push("Prism");
         if (r.needsSteam)
             chips.push("Needs Steam");
+        if (g.kind === "hoyo" && r.xxmi === true)
+            chips.push("XXMI");
         if (!g.installDir)
             chips.push("Not installed");
         return chips;
