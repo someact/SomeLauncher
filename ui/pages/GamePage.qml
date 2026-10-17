@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import Quickshell
 import Quickshell.Widgets
 import qs.core
 import qs.components
@@ -9,7 +10,7 @@ import qs.components
 // favorite, then playtime, last played, achievements and the build. It grows
 // out of the card that opened it (Nav.from) and shrinks back into it; without
 // a card it fades. Escape, the back arrow or the mouse's back button close it,
-// Enter plays.
+// Enter plays. The settings button slides the game's settings sheet over it.
 FocusScope {
     id: root
 
@@ -22,7 +23,15 @@ FocusScope {
     Behavior on t {
         Spring { preset: "smooth"; epsilon: 0.002 }
     }
-    Component.onCompleted: Qt.callLater(() => t = Qt.binding(() => Nav.open ? 1 : 0))
+    Component.onCompleted: {
+        Qt.callLater(() => t = Qt.binding(() => Nav.open ? 1 : 0));
+        // Testing: SOMELAUNCHER_GAME=<id>/simple or /advanced opens the settings too
+        const tab = (Quickshell.env("SOMELAUNCHER_GAME") ?? "").split("/")[1];
+        if (tab) {
+            settings.tab = tab;
+            settings.open = true;
+        }
+    }
     onTChanged: if (!Nav.open && t < 0.01) Nav.closed()
     readonly property real shown: Math.max(0, Math.min(1, (t - 0.45) / 0.55))    // the controls come in late
 
@@ -44,9 +53,14 @@ FocusScope {
     // A double click on a card plays: its second click lands here, on the page
     property double openedAt: Date.now()
 
-    Keys.onEscapePressed: Nav.closeGame()
-    Keys.onReturnPressed: play.trigger()
-    Keys.onEnterPressed: play.trigger()
+    Keys.onEscapePressed: {
+        if (settings.open)
+            settings.open = false;
+        else
+            Nav.closeGame();
+    }
+    Keys.onReturnPressed: if (!settings.open) play.trigger()
+    Keys.onEnterPressed: if (!settings.open) play.trigger()
 
     // The page under it darkens and takes no clicks; a click beside the page closes it
     Rectangle {
@@ -381,8 +395,19 @@ FocusScope {
         }
     }
 
-    // 4d: the settings sheet
     function openSettings() {
+        settings.open = true;
+    }
+    GameSettings {
+        id: settings
+        anchors.fill: parent
+        game: root.game
+        visible: root.t > 0.5
+        onCloseRequested: {
+            open = false;
+            root.forceActiveFocus();
+        }
+        onOpenChanged: if (open) forceActiveFocus()
     }
 
     // "semiwork · 2025 · Action, Early Access"

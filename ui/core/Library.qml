@@ -7,7 +7,7 @@ import Quickshell
 // `all` (every game by name, hidden ones too), `games` (the visible ones),
 // `byId`, and `running` (id → the latest `game.state`). Pages derive their rows as lists of ids and bind each card to
 // `Library.byId[id]`, so a changed game updates its card without rebuilding the row.
-//   Library.play(id, error => …)   Library.stop(id)
+//   Library.play(id, error => …)   Library.stop(id)   Library.update(id, {fields}, error => …)
 Singleton {
     id: root
 
@@ -107,7 +107,17 @@ Singleton {
         Daemon.call("games.stop", { id }, undefined);
     }
     function setFavorite(id, on) {
-        Daemon.call("games.update", { id, favorite: on }, undefined);
+        update(id, { favorite: on });
+    }
+    // games.update; the game it returns is put in at once (its library.changed
+    // event fetches it again a moment later), so a switch never waits on it
+    function update(id, fields, done) {
+        Daemon.call("games.update", Object.assign({ id }, fields), (g, error) => {
+            if (g)
+                root._merge({ [id]: g });
+            if (done)
+                done(error);
+        });
     }
 
     // The same list of ids? Rows keep their model (and scroll) when nothing moved

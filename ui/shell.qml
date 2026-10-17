@@ -27,13 +27,14 @@ ShellRoot {
         const start = Quickshell.env("SOMELAUNCHER_PAGE") || Config.ui.page;
         page = [...pages, settingsPage].some(p => p.id === start) ? start : "home";
     }
-    // `SOMELAUNCHER_GAME=<id>` opens that game's page once the library is in (screenshots, testing)
+    // `SOMELAUNCHER_GAME=<id>` opens that game's page once the library is in, `<id>/simple`
+    // or `<id>/advanced` its settings too (screenshots, testing)
     Connections {
         target: Library
         enabled: Quickshell.env("SOMELAUNCHER_GAME") !== null && Quickshell.env("SOMELAUNCHER_GAME") !== ""
         function onLoadedChanged() {
             if (Library.loaded)
-                Nav.openGame(Number(Quickshell.env("SOMELAUNCHER_GAME")), null);
+                Nav.openGame(parseInt(Quickshell.env("SOMELAUNCHER_GAME")), null);
         }
     }
     onPageChanged: {
