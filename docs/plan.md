@@ -121,18 +121,20 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 - [~] 7d. (added 2026-10-17) Unlock popup for non-Steam games: the daemon watches the running game's achievement file (inotify, no polling) and emits `achievement.unlocked`; a PS5-style toast shows it, through SomeShell when it runs, else our own small layer-shell popup over the game (not inside gamescope). Steam games keep Steam's own popup — done with our own popup only (`components/AchievementToast.qml`: overlay layer, top of the focused monitor, click-through, queued, only while the game runs); SomeShell showing it instead is left for SomeShell's repo (it already reads our socket, so it would listen to `achievement.unlocked`). The watch (`achievements/live.rs`) starts with each session (also one found again after a restart), fills the list first, follows the save folder's appearance, and stops with the game. Not shown with Settings → When a game starts → Close (the UI quits). Checked live with a stand-in game in Muse Dash's folder: one unlock, then two queued
 
 ## Phase 8: Minecraft (Prism backend)
-- [ ] 8a. UX proposal for review (below), then build it after feedback
+- [x] 8a. UX proposal for review (below), then build it after feedback — agreed 2026-10-17: two panes, instances in Home and the Library too, an account picker from Prism's accounts, modpack mods toggle with a note
 - [ ] 8b. Instances page: groups from `instgroups.json`, cards with icon, version and loader
 - [ ] 8c. Instance page: Play (`prismlauncher -l <instance>`), playtime (Prism's own counters + ours), worlds, screenshots
 - [ ] 8d. Mods tab: list `mods/` with enable/disable (`.disabled`), open folder
 - [ ] 8e. Settings tab: RAM, Java, JVM args, window size (written to `instance.cfg`)
 - [ ] 8f. New instance and account handling open Prism for now
 
-### Minecraft UX proposal (for your review)
-- The page is two panes. Left is a narrow column of instance cards (icon + name + small `1.21.1 · Fabric` chip), grouped and collapsible. Right is the selected instance.
-- The instance header matches the game page: a wide glass banner (a world screenshot or a picked image) with the name, version and loader chips, and a big Play button. The account sits top right.
-- Under it are four tabs, kept short: **Overview** (playtime, last played, worlds with last-played dates, recent screenshots), **Mods** (search box, toggle per mod, count, open folder), **Settings** (RAM slider, Java picker, a few switches; "Advanced" expands JVM args) and **Files** (open the folders: mods, resource packs, shaders, saves).
-- "+" at the top of the left column is the new-instance flow, three steps: version → loader → name. Prism does it until Phase 10.
+### Minecraft UX (agreed 2026-10-17)
+- Two panes. Left: a narrow column of instance cards (icon, name, a `26.2 · Fabric` chip) in Prism's groups, collapsible, with a search box (typing anywhere starts it). Right: the selected instance.
+- Header like the game page: a wide glass banner (the newest screenshot, else the last played world's icon, else the instance icon blurred; or a picked image) with the name, version, loader and mod count, playtime, last played and a big Play button. The account menu sits top right: Prism's accounts (`accounts.json`), Play uses the chosen one (`-a`); adding or logging in opens Prism.
+- Four tabs: **Overview** (worlds with icon and last played, joining one directly when Prism can; recent screenshots with a viewer), **Mods** (search, enabled/disabled filter, a switch per mod, names from Prism's `.index/*.pw.toml`, a list that only builds the rows on screen since packs have 365 mods; modpack instances keep the switches with a note that a pack update in Prism may switch mods back), **Settings** (RAM slider, Java picker, a few switches; Advanced has JVM args and window size) and **Files** (open mods, resource packs, shader packs, saves, screenshots).
+- "+" and an instance's actions (rename, group, copy, delete) open Prism until Phase 10 (version → loader → name there).
+- Instances also show in Home (Continue playing) and in a Library row like every game; their game page links to the Minecraft page.
+- Running: `prismlauncher -l` hands the launch to an already open Prism, so Minecraft may start outside our scope; the session follows the Java process by its instance folder instead.
 - Prism's strength (everything is configurable) is kept by putting the rare options behind Advanced, not by removing them.
 
 ## Phase 9: Polish and release
