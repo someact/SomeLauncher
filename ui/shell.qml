@@ -26,6 +26,7 @@ ShellRoot {
     Component.onCompleted: {
         const start = Quickshell.env("SOMELAUNCHER_PAGE") || Config.ui.page;
         page = [...pages, settingsPage].some(p => p.id === start) ? start : "home";
+        _lastIndex = indexOf(page);
     }
     // `SOMELAUNCHER_GAME=<id>` opens that game's page once the library is in, `<id>/simple`
     // or `<id>/advanced` its settings too (screenshots, testing)
@@ -37,7 +38,17 @@ ShellRoot {
                 Nav.openGame(parseInt(Quickshell.env("SOMELAUNCHER_GAME")), null);
         }
     }
+    // Pages enter from the side of the rail they come from: lower ones rise, higher ones drop
+    property int enterFrom: 1
+    property int _lastIndex: 0
+    function indexOf(id) {
+        const i = pages.findIndex(p => p.id === id);
+        return i < 0 ? pages.length : i;
+    }
     onPageChanged: {
+        const i = indexOf(page);
+        enterFrom = i >= _lastIndex ? 1 : -1;
+        _lastIndex = i;
         if (Config.ready)
             Config.ui.page = page;
         Nav.closeGame();
@@ -91,11 +102,13 @@ ShellRoot {
                 focus: true   // the page gets the keys (Library: type to search)
                 onLoaded: enter.restart()
             }
-            // New page: fade in while rising a little
+            // New page: fades in while it slides the last bit from its side
+            // and settles from a hair smaller; with reduced motion only the fade
             ParallelAnimation {
                 id: enter
                 NumberAnimation { target: pageLoader; property: "opacity"; from: 0; to: 1; duration: Motion.normal; easing.type: Easing.OutCubic }
-                NumberAnimation { target: pageLoader; property: "y"; from: 18; to: 0; duration: Motion.slow; easing.type: Easing.OutQuint }
+                NumberAnimation { target: pageLoader; property: "y"; from: Motion.reduced ? 0 : 28 * app.enterFrom; to: 0; duration: Motion.slow; easing.type: Easing.OutQuint }
+                NumberAnimation { target: pageLoader; property: "scale"; from: Motion.reduced ? 1 : 0.985; to: 1; duration: Motion.slow; easing.type: Easing.OutQuint }
             }
 
             // The game page, over whichever page opened it (core/Nav.qml)

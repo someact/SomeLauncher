@@ -5,10 +5,13 @@ import Quickshell
 
 // Spring presets, the same as SomeShell's (hypr/core/motion.lua matches them).
 // Springs keep their velocity when retargeted, so every move can be interrupted.
-// Use them through components/Spring.qml. While a game runs (5d) or with
-// reduce-motion on, springs collapse to short critically damped moves.
+// Use them through components/Spring.qml. While a game runs (`paused`: ours,
+// or SomeShell's game mode) or with reduce-motion on, springs collapse to
+// short critically damped moves and decorative motion (staggers, page slides)
+// is skipped, so the launcher costs next to nothing beside a game.
 Singleton {
-    readonly property bool reduced: Config.motion.reduce || Shell.gameMode
+    readonly property bool paused: Library.playing || Shell.gameMode
+    readonly property bool reduced: Config.motion.reduce || paused
     readonly property real speed: Math.max(0.25, Config.motion.speed)
 
     readonly property var presets: ({

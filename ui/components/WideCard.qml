@@ -16,6 +16,9 @@ Item {
     readonly property Item artItem: art     // where the game page grows from
     readonly property bool update: !!game && !!game.build && game.build.updateAvailable
 
+    // Fades and slides in after `enterDelay` ms when made (GameRow staggers its first cards)
+    property int enterDelay: -1
+
     signal clicked
     signal doubleClicked
 
@@ -23,8 +26,17 @@ Item {
     implicitHeight: 200
 
     Item {
+        id: lift
         anchors.fill: parent
         scale: mouse.pressed ? 0.98 : root.hovered ? 1.02 : 1
+        // Hovered, it rises a little too (a transform: the anchors own y)
+        transform: Translate {
+            id: enterShift
+            y: root.hovered && !mouse.pressed ? -4 : 0
+            Behavior on y {
+                Spring { preset: "snappy" }
+            }
+        }
         Behavior on scale {
             Spring { preset: "bouncy" }
         }
@@ -106,6 +118,17 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Component.onCompleted: if (enterDelay >= 0 && !Motion.reduced) enter.start()
+    SequentialAnimation {
+        id: enter
+        PropertyAction { target: lift; property: "opacity"; value: 0 }
+        PauseAnimation { duration: Math.max(0, root.enterDelay) }
+        ParallelAnimation {
+            NumberAnimation { target: lift; property: "opacity"; to: 1; duration: Motion.normal; easing.type: Easing.OutCubic }
+            NumberAnimation { target: enterShift; property: "x"; from: 28; to: 0; duration: Motion.slow; easing.type: Easing.OutQuint }
         }
     }
 

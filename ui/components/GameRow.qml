@@ -15,6 +15,12 @@ Column {
     property bool wide: false
 
     property var _model: []
+    // Cards made while the row is new come in one after another; ones made
+    // later by scrolling just appear
+    readonly property double born: Date.now()
+    function enterDelay(index) {
+        return Date.now() - born < 600 ? Math.min(index, 8) * 40 : -1;
+    }
     onIdsChanged: if (!Library.sameIds(ids, _model)) _model = ids
     Component.onCompleted: _model = ids
 
@@ -125,7 +131,9 @@ Column {
         GameCard {
             id: c
             required property int modelData
+            required property int index
             gameId: modelData
+            enterDelay: root.enterDelay(index)
             selected: modelData === root.selectedId
             onClicked: root.picked(modelData, c.artItem)
             onDoubleClicked: root.activated(modelData)
@@ -136,8 +144,10 @@ Column {
         WideCard {
             id: w
             required property int modelData
+            required property int index
             width: 356
             gameId: modelData
+            enterDelay: root.enterDelay(index)
             selected: modelData === root.selectedId
             onClicked: root.picked(modelData, w.artItem)
             onDoubleClicked: root.activated(modelData)

@@ -15,6 +15,8 @@ Singleton {
     property var games: []
     property var byId: ({})
     property var running: ({})
+    // A game is being played (not just starting): the UI pauses its motion (core/Motion.qml)
+    readonly property bool playing: Object.keys(running).some(id => running[id].state === "running")
     property bool loaded: false
     // Unix seconds, renewed with each change: what "2 days ago" is counted from
     property real now: Date.now() / 1000
