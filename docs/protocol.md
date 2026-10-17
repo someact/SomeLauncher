@@ -41,6 +41,7 @@ On connect the daemon first sends `hello`:
 | `busy` | the same job already runs |
 | `not_found` | no game (or other object) with that id |
 | `network` | a web service failed or refused (the message says which) |
+| `no_space` | the disk has too little free space for it (the message says how much) |
 | `internal` | the daemon failed (the message says why; the log has more) |
 
 ## Methods
@@ -79,11 +80,13 @@ On connect the daemon first sends `hello`:
 | `proton.install` | `{source, tag}` | `{id}` at once; the download runs in the background (`download.*` events), is checked against its sha512 and unpacked into `compatibilitytools.d`. Error `busy` when it already runs |
 | `proton.remove` | `{name}` | `null`; only builds in our `compatibilitytools.d` |
 | `downloads.list` | — | running jobs `{id, label, done, total}` |
-| `downloads.cancel` | `{id}` | `null`; the job stops and its partial files are removed. Emits `download.done` with `error: "cancelled"` |
+| `downloads.cancel` | `{id}` | `null`; the job stops and its partial files are removed (a Hoyo install keeps what it fetched, to resume). Emits `download.done` with `error: "cancelled"` |
 | `power.status` | — | `{profiles, active, onBattery, battery, gaming, prefs}`: power-profiles-daemon's profiles (empty without it) and the active one, the laptop battery (`null` on a desktop: `{path, limitSupported, limitEnabled, limitStart, limitEnd}`), whether gaming mode is on (see Gaming mode), and the `gaming` setting with its defaults |
 | `hoyo.games` | `{region?, force?}`: `global` (default) or `cn` | the HoYoPlay games we support (Genshin Impact, Zenless Zone Zero): `{biz, id, name, region, logo, icon, background, backgrounds, main, preload, games}`. `main`/`preload` are branches `{packageId, branch, password, tag, diffTags, voices}` (`preload` only while there is one); `backgrounds` the launcher's `{image, video?, theme?}`, the current first (a `video` is a webm loop, `theme` a transparent picture over it); `games` the library ids of this game. Kept 10 minutes; `force` asks again. Error `network` |
 | `hoyo.content` | `{biz, force?}` | `{banners, posts, hoyolab, social}`: banners `{link, icon}` (`icon` is the image), posts `{kind, title, link, date}` (`kind`: `info`, `activity`, `announce`), the game's HoYoLAB (or Miyoushe) page, social links `{title, link, icon}`. Error `network` |
 | `hoyo.adopt` | `{path}` (a game folder or its exe) or `{id}` (a library game's folder) | the game: an install on disk becomes ours to update and run. Which game and region come from the exe (ZZZ's `version_info` for the region), the version from `<Game>_Data/globalgamemanagers` (Unity's bundle version; `config.ini` only as a fallback, other launchers leave it stale), the voice packs from `Persistent/audio_lang_*`. A library game in that folder keeps its entry and gets a `hoyo` source; otherwise one is added. Done for every Hoyo game after an import too. Error `not_found` |
+| `hoyo.plan` | `{biz, voices?, dir?}` | what an install takes: `{biz, version, dir, voices, voiceSizes, downloadSize, size, free}` (bytes; `voiceSizes` lists every voice pack `{voice, downloadSize, size}`; voices default to the locale's language when offered, else English). Error `network` |
+| `hoyo.install` | `{biz, dir?, voices?}`, or `{id}` to resume one | `{id, game}`: the job (`download.*` events, `done`/`total` in downloaded bytes) and the library game, made at once with `installing: {version, voices}` in its `hoyo` source until the job ends. `dir` defaults to `<first game folder>/<name>`. Every resource category of a full install plus the voice packs, through Sophon: manifests and chunks are checked against their md5, chunks written in place, and a log of finished chunks (`<dir>/.somelauncher/`) lets a cancelled or broken install go on with `{id}`; cancelling keeps what was fetched. At the end `config.ini` and the game's voice pack list are written and the game is adopted. Errors `no_space` (checked before anything is made), `busy` (the folder already holds the game: adopt it), `network` |
 | `shutdown` | — | `null`, then the daemon exits |
 
 ## Events

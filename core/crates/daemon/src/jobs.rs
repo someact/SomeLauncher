@@ -57,6 +57,11 @@ pub struct Progress {
 }
 
 impl Progress {
+    /// Progress nobody hears about (tests, and steps run outside a job)
+    #[cfg(test)]
+    pub fn detached() -> Self {
+        Progress { state: Weak::new(), id: String::new(), label: String::new(), last: Default::default() }
+    }
     pub fn update(&self, done: u64, total: u64) {
         let Some(state) = self.state.upgrade() else { return };
         if let Some((info, _)) = state.jobs.running.lock().unwrap().get_mut(&self.id) {

@@ -22,6 +22,8 @@ inotify = "0.11.5"
 futures-util = "0.3.34"
 libc = "0.2.190"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+md-5 = "0.11.0"
+zstd = "0.14.3"
 
 [dev-dependencies]
 tempfile = "3"

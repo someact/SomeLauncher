@@ -4,6 +4,8 @@
 
 pub mod api;
 pub mod files;
+pub mod install;
+pub mod sophon;
 
 use crate::rpc::{State, internal};
 use serde_json::{Value, json};
@@ -126,6 +128,10 @@ impl State {
         for g in games.into_iter().filter(|g| g.kind == Kind::Hoyo) {
             let Some(install) = g.install_dir.as_deref().and_then(files::detect) else { continue };
             let before = g.sources.iter().find(|s| s.source == SourceKind::Hoyo).map(|s| s.data.clone());
+            // Being installed: its files are not the game yet
+            if before.as_ref().is_some_and(|d| !d["installing"].is_null()) {
+                continue;
+            }
             let after = json!({ "biz": install.biz, "version": install.version, "voices": install.voices });
             if before.as_ref() != Some(&after) {
                 match self.adopt(&install, Some(g.id)) {

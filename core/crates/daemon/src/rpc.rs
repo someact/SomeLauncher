@@ -84,6 +84,8 @@ impl State {
             "hoyo.games" => self.hoyo_games(params).await,
             "hoyo.content" => self.hoyo_content(params).await,
             "hoyo.adopt" => self.hoyo_adopt(params),
+            "hoyo.plan" => self.hoyo_plan(params).await,
+            "hoyo.install" => self.hoyo_install(params).await,
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {

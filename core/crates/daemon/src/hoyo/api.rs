@@ -40,7 +40,6 @@ impl Region {
         }
     }
     /// Sophon's host (getBuild, getPatchBuild)
-    #[allow(dead_code)] // Sophon installs (6c)
     pub fn sophon(self) -> &'static str {
         match self {
             Region::Global => "https://sg-public-api.hoyoverse.com/downloader/sophon_chunk/api",
@@ -61,6 +60,8 @@ pub struct Branch {
     pub diff_tags: Vec<String>,
     /// Voice packs offered (`en-us`, `ja-jp`, …)
     pub voices: Vec<String>,
+    /// The resource categories a full install has (`game`, and ZZZ's numbered ones)
+    pub resources: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -152,14 +153,20 @@ pub fn parse_branch(b: &Value) -> Option<Branch> {
         password: str_at(b, &["password"]),
         tag,
         diff_tags: b["diff_tags"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(String::from)).collect(),
-        voices: b["categories"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|c| c["type"] == "CATEGORY_TYPE_AUDIO")
-            .filter_map(|c| c["matching_field"].as_str().map(String::from))
-            .collect(),
+        voices: categories(b, "CATEGORY_TYPE_AUDIO"),
+        resources: categories(b, "CATEGORY_TYPE_RESOURCE"),
     })
+}
+
+/// A branch's categories of one type that a full install takes
+fn categories(b: &Value, kind: &str) -> Vec<String> {
+    b["categories"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["type"] == kind && c["scenarios"].as_array().is_none_or(|s| s.iter().any(|s| s == "CATEGORY_SCENARIO_FULL")))
+        .filter_map(|c| c["matching_field"].as_str().map(String::from))
+        .collect()
 }
 
 pub fn parse_backgrounds(info: &Value) -> Vec<Background> {
@@ -316,6 +323,7 @@ mod tests {
             "categories": [{"matching_field": "game", "type": "CATEGORY_TYPE_RESOURCE"}, {"matching_field": "en-us", "type": "CATEGORY_TYPE_AUDIO"}]});
         let b = parse_branch(&b).unwrap();
         assert_eq!((b.tag.as_str(), b.diff_tags, b.voices), ("7.1.0", vec!["7.0.0".to_string()], vec!["en-us".to_string()]));
+        assert_eq!(b.resources, vec!["game".to_string()]);
         assert_eq!(parse_branch(&Value::Null), None);
     }
 
