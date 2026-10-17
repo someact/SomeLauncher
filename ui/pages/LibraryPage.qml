@@ -7,7 +7,7 @@ import qs.components
 // without one by kind, and the games that are not installed last. Searching or
 // picking a filter shows a grid of the matches instead. Typing anywhere
 // searches; Ctrl+F or / focuses the box, Escape clears it.
-// A click picks a card, a double click plays it.
+// A click opens the game page, a double click plays the game.
 Item {
     id: root
 
@@ -131,6 +131,10 @@ Item {
         }
     }
 
+    function open(id, card) {
+        selectedId = id;
+        Nav.openGame(id, card);
+    }
     function play(id) {
         selectedId = id;
         if (!(id in Library.running))
@@ -237,7 +241,7 @@ Item {
                         note: modelData === "top" ? "" : String((root.rowIds[modelData] ?? []).length)
                         ids: root.rowIds[modelData] ?? []
                         selectedId: root.selectedId
-                        onPicked: id => root.selectedId = id
+                        onPicked: (id, card) => root.open(id, card)
                         onActivated: id => root.play(id)
                     }
                 }
@@ -269,10 +273,11 @@ Item {
                 width: grid.cellWidth
                 height: grid.cellHeight
                 GameCard {
+                    id: c
                     anchors.verticalCenter: parent.verticalCenter
                     gameId: parent.modelData
                     selected: parent.modelData === root.selectedId
-                    onClicked: root.selectedId = parent.modelData
+                    onClicked: root.open(parent.modelData, c.artItem)
                     onDoubleClicked: root.play(parent.modelData)
                 }
             }

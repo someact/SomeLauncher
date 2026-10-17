@@ -11,6 +11,7 @@ Item {
     readonly property var game: Library.byId[gameId] ?? null
     readonly property bool running: gameId in Library.running
     readonly property bool hovered: mouse.containsMouse
+    readonly property Item artItem: art     // where the game page grows from
 
     signal clicked
     signal doubleClicked

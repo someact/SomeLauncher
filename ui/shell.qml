@@ -5,7 +5,7 @@
 // SomeLauncher UI: `qs -c somelauncher` (installed) or `scripts/dev.sh ui`.
 // A normal window. The work lives in somelauncherd (core/Daemon.qml connects
 // and starts it), so closing this window never stops a game or a download.
-// Pages load one at a time.
+// Pages load one at a time; a game page opens over them.
 
 import QtQuick
 import Quickshell
@@ -27,7 +27,20 @@ ShellRoot {
         const start = Quickshell.env("SOMELAUNCHER_PAGE") || Config.ui.page;
         page = [...pages, settingsPage].some(p => p.id === start) ? start : "home";
     }
-    onPageChanged: if (Config.ready) Config.ui.page = page
+    // `SOMELAUNCHER_GAME=<id>` opens that game's page once the library is in (screenshots, testing)
+    Connections {
+        target: Library
+        enabled: Quickshell.env("SOMELAUNCHER_GAME") !== null && Quickshell.env("SOMELAUNCHER_GAME") !== ""
+        function onLoadedChanged() {
+            if (Library.loaded)
+                Nav.openGame(Number(Quickshell.env("SOMELAUNCHER_GAME")), null);
+        }
+    }
+    onPageChanged: {
+        if (Config.ready)
+            Config.ui.page = page;
+        Nav.closeGame();
+    }
 
     function fileFor(id) {
         return "pages/" + id.charAt(0).toUpperCase() + id.slice(1) + "Page.qml";
@@ -82,6 +95,16 @@ ShellRoot {
                 id: enter
                 NumberAnimation { target: pageLoader; property: "opacity"; from: 0; to: 1; duration: Motion.normal; easing.type: Easing.OutCubic }
                 NumberAnimation { target: pageLoader; property: "y"; from: 18; to: 0; duration: Motion.slow; easing.type: Easing.OutQuint }
+            }
+
+            // The game page, over whichever page opened it (core/Nav.qml)
+            Loader {
+                id: gameLoader
+                anchors.fill: parent
+                active: Nav.gameId >= 0
+                source: "pages/GamePage.qml"
+                onLoaded: item.forceActiveFocus()
+                onActiveChanged: if (!active) pageLoader.forceActiveFocus()
             }
         }
     }

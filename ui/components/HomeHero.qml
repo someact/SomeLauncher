@@ -3,15 +3,17 @@ import Quickshell.Widgets
 import qs.core
 
 // Home's big banner for one game: its hero art (else its grid art, cropped),
-// the logo or the name, when it was last played and for how long, and Play.
+// the logo or the name, when it was last played and for how long, Play,
+// favorite and the game page.
 // Picking another game crossfades the art.
 ClippingRectangle {
     id: root
 
     property var game: null
-    readonly property var state: game ? Library.running[game.id] ?? null : null
     property string label: ""               // a small heading over the name
-    property string error: ""
+    readonly property alias play: play
+
+    signal details                          // the info button: open the game page
 
     radius: Theme.radius.xl
     color: Theme.surfaceHigh
@@ -23,7 +25,6 @@ ClippingRectangle {
         (_aFront ? artB : artA).source = artSource;
         _aFront = !_aFront;
     }
-    onGameChanged: error = ""
     HeroArt {
         id: artA
         front: root._aFront
@@ -165,41 +166,39 @@ ClippingRectangle {
 
         Row {
             spacing: Theme.space.m
-            PlayButton {
-                readonly property string st: root.state ? root.state.state : ""
-                label: st === "running" ? "Stop" : st === "starting" ? (root.state.step === "steam" ? "Waiting for Steam" : "Starting") : "Play"
-                icon: st === "running" ? "stop" : st === "starting" ? "hourglass_top" : "play_arrow"
-                onClicked: {
-                    if (!root.game)
-                        return;
-                    if (st === "")
-                        Library.play(root.game.id, error => root.error = error ? error.message : "");
-                    else
-                        Library.stop(root.game.id);
-                }
+            GamePlayButton {
+                id: play
+                game: root.game
             }
-            IconButton {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 56
-                height: 56
+            HeroButton {
                 icon: "favorite"
                 active: !!root.game && root.game.favorite
-                activeColor: Theme.primaryContainer
-                iconColor: active ? Theme.fgPrimaryContainer : Theme.fgOnArt
-                color: Qt.rgba(1, 1, 1, 0.12)
-                hoverColor: Qt.rgba(1, 1, 1, 0.2)
                 onClicked: if (root.game) Library.setFavorite(root.game.id, !root.game.favorite)
+            }
+            HeroButton {
+                icon: "info"
+                onClicked: root.details()
             }
         }
 
         SText {
             width: parent.width
-            visible: root.error !== ""
-            text: root.error
+            visible: play.error !== ""
+            text: play.error
             color: Theme.error
             wrapMode: Text.Wrap
             maximumLineCount: 3
         }
+    }
+
+    component HeroButton: IconButton {
+        anchors.verticalCenter: parent.verticalCenter
+        width: 56
+        height: 56
+        activeColor: Theme.primaryContainer
+        iconColor: active ? Theme.fgPrimaryContainer : Theme.fgOnArt
+        color: Qt.rgba(1, 1, 1, 0.12)
+        hoverColor: Qt.rgba(1, 1, 1, 0.2)
     }
 
     // Rim

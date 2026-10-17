@@ -119,6 +119,15 @@ Singleton {
         const p = game && game.art ? game.art[kind] : null;
         return p ? Paths.url(p) : "";
     }
+    // The installed build or version: Steam's, the one the user noted, else the
+    // importer's (Twintail's until Phase 6 reads the Hoyo game files)
+    function version(g) {
+        if (!g)
+            return "";
+        const b = g.build ?? {};
+        const s = g.sources.find(s => s.data && s.data.version);
+        return b.installed || b.recorded || (s ? s.data.version : "");
+    }
     function kindIcon(kind) {
         return { steam: "sports_esports", proton: "wine_bar", native: "terminal", hoyo: "auto_awesome", minecraft: "deployed_code" }[kind] ?? "stadia_controller";
     }

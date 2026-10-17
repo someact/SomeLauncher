@@ -6,7 +6,7 @@ import qs.components
 // "Continue playing" (games played in the last `Config.home.recentDays` days,
 // newest first), favorites, and the Hoyo games with their installed version.
 // Games that drop off Home stay in Library. A click picks a card for the
-// banner, a double click plays it.
+// banner, a double click plays it; the banner's info button opens the game page.
 Item {
     id: root
 
@@ -42,20 +42,15 @@ Item {
         }
     }
 
-    // Twintail's version until our own Hoyo support (Phase 6) reads the game files
     function hoyoVersion(g) {
-        if (!g)
-            return "";
-        const b = g.build ?? {};
-        const s = g.sources.find(s => s.data && s.data.version);
-        const v = b.installed || b.recorded || (s ? s.data.version : "");
+        const v = Library.version(g);
         return v ? "Version " + v : "Version unknown";
     }
 
     function play(id) {
         selectedId = id;
         if (!(id in Library.running))
-            Library.play(id, error => hero.error = error ? error.message : "");
+            hero.play.trigger();
     }
 
     Flickable {
@@ -78,6 +73,7 @@ Item {
                 height: Math.max(360, root.height * 0.58)
                 game: root.selected
                 label: root.selected && root.selected.id === root.recentIds[0] ? "Continue playing" : ""
+                onDetails: if (root.selected) Nav.openGame(root.selected.id, hero)
             }
 
             GameRow {

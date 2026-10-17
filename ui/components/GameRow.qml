@@ -18,7 +18,7 @@ Column {
     onIdsChanged: if (!Library.sameIds(ids, _model)) _model = ids
     Component.onCompleted: _model = ids
 
-    signal picked(int id)
+    signal picked(int id, Item card)   // card: its art, for Nav.openGame
     signal activated(int id)
 
     spacing: Theme.space.m
@@ -123,21 +123,23 @@ Column {
     Component {
         id: card
         GameCard {
+            id: c
             required property int modelData
             gameId: modelData
             selected: modelData === root.selectedId
-            onClicked: root.picked(modelData)
+            onClicked: root.picked(modelData, c.artItem)
             onDoubleClicked: root.activated(modelData)
         }
     }
     Component {
         id: wideCard
         WideCard {
+            id: w
             required property int modelData
             width: 356
             gameId: modelData
             selected: modelData === root.selectedId
-            onClicked: root.picked(modelData)
+            onClicked: root.picked(modelData, w.artItem)
             onDoubleClicked: root.activated(modelData)
         }
     }
