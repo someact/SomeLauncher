@@ -25,7 +25,7 @@ FocusScope {
     }
     Component.onCompleted: {
         Qt.callLater(() => t = Qt.binding(() => Nav.open ? 1 : 0));
-        // Testing: SOMELAUNCHER_GAME=<id>/simple or /advanced opens the settings too
+        // Testing: SOMELAUNCHER_GAME=<id>/simple, /advanced or /mods opens the settings too
         const tab = (Quickshell.env("SOMELAUNCHER_GAME") ?? "").split("/")[1];
         if (tab) {
             settings.tab = tab;
@@ -255,7 +255,8 @@ FocusScope {
                         id: logo
                         anchors.fill: parent
                         source: Library.art(root.game, "logo")
-                        sourceSize: Qt.size(Math.ceil(width * root.dpr), Math.ceil(height * root.dpr))
+                        // The box's largest size, never its current one (that would loop through the box's height)
+                        sourceSize: Qt.size(Math.ceil(640 * root.dpr), Math.ceil(160 * root.dpr))
                         fillMode: Image.PreserveAspectFit
                         horizontalAlignment: Image.AlignLeft
                         verticalAlignment: Image.AlignBottom
