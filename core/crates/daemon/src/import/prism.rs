@@ -78,10 +78,23 @@ fn components(dir: &Path) -> (Option<String>, Option<(&'static str, String)>) {
     (minecraft, loader)
 }
 
-/// A custom icon in Prism's icons dir; built-in keys have no file.
-fn icon(root: &Path, key: &str) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(root.join("icons")).ok()?;
-    entries.flatten().map(|e| e.path()).find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(key))
+/// The instance's game folder (`minecraft`, or `.minecraft` in older instances).
+pub fn game_dir(instance: &Path) -> PathBuf {
+    let dot = instance.join(".minecraft");
+    if !instance.join("minecraft").is_dir() && dot.is_dir() { dot } else { instance.join("minecraft") }
+}
+
+/// A custom icon in Prism's icons dir. Built-in keys have no file there, but
+/// Prism writes the instance's icon into its game folder as `icon.png` (the
+/// game window's icon) whatever it is.
+fn icon(root: &Path, key: &str, game_dir: &Path) -> Option<PathBuf> {
+    let custom = std::fs::read_dir(root.join("icons"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| !key.is_empty() && p.file_stem().and_then(|s| s.to_str()) == Some(key));
+    custom.or_else(|| Some(game_dir.join("icon.png")).filter(|p| p.is_file()))
 }
 
 pub fn scan(home: &Path) -> Result<Vec<Found>> {
@@ -110,6 +123,7 @@ pub fn scan(home: &Path) -> Result<Vec<Found>> {
 
             let (minecraft, loader) = components(&dir);
             let key = get("iconKey");
+            let game_dir = game_dir(&dir);
             let data = json!({
                 "root": root,
                 "flatpak": flatpak,
@@ -118,7 +132,8 @@ pub fn scan(home: &Path) -> Result<Vec<Found>> {
                 "loader": loader.as_ref().map(|l| l.0),
                 "loaderVersion": loader.map(|l| l.1),
                 "iconKey": key,
-                "icon": icon(&root, key),
+                "icon": icon(&root, key, &game_dir),
+                "gameDir": game_dir,
                 "pack": Some(get("ManagedPackName")).filter(|p| !p.is_empty()),
             });
             out.push(Found { source: Source { source: SourceKind::Prism, source_id: id, data }, game, follow_paths: true });
@@ -145,6 +160,7 @@ mod tests {
             std::fs::write(inst.join(id).join("mmc-pack.json"), pack).unwrap();
         }
         std::fs::create_dir_all(inst.join("broken")).unwrap();
+        std::fs::create_dir_all(inst.join("1.21.1/.minecraft")).unwrap();
         std::fs::create_dir_all(root.join("icons")).unwrap();
         std::fs::write(root.join("icons/axiom.png"), "").unwrap();
         std::fs::write(root.join("prismlauncher.cfg"), "[General]\nInstanceDir=instances\n").unwrap();
@@ -160,5 +176,10 @@ mod tests {
         assert!(d["icon"].as_str().unwrap().ends_with("icons/axiom.png"));
         let plain = &found[0].source.data;
         assert_eq!((&plain["loader"], &plain["group"], &plain["icon"]), (&Value::Null, &Value::Null, &Value::Null));
+        assert!(plain["gameDir"].as_str().unwrap().ends_with("1.21.1/.minecraft"), "an older instance's dot folder");
+        // A built-in icon key: the copy Prism leaves in the game folder
+        std::fs::write(inst.join("1.21.1/.minecraft/icon.png"), "").unwrap();
+        let found = scan(home.path()).unwrap();
+        assert!(found[0].source.data["icon"].as_str().unwrap().ends_with("1.21.1/.minecraft/icon.png"));
     }
 }

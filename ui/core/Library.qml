@@ -152,6 +152,18 @@ Singleton {
         const s = g.sources.find(s => s.source === "hoyo") ?? g.sources.find(s => s.data && s.data.biz);
         return s && s.data && s.data.biz ? s.data.biz : "";
     }
+    // A Minecraft instance's Prism source data: {group, minecraft, loader, loaderVersion, pack, gameDir, …}, or null
+    function prism(g) {
+        const s = g && g.sources ? g.sources.find(s => s.source === "prism") : null;
+        return s ? s.data : null;
+    }
+    // "26.2 · Fabric", "1.21.1 · Vanilla"
+    function mcVersion(g) {
+        const p = prism(g);
+        if (!p)
+            return "";
+        return [p.minecraft, p.loader ?? "Vanilla"].filter(x => !!x).join(" · ");
+    }
     function setFavorite(id, on) {
         update(id, { favorite: on });
     }

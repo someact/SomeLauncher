@@ -122,7 +122,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 
 ## Phase 8: Minecraft (Prism backend)
 - [x] 8a. UX proposal for review (below), then build it after feedback — agreed 2026-10-17: two panes, instances in Home and the Library too, an account picker from Prism's accounts, modpack mods toggle with a note
-- [ ] 8b. Instances page: groups from `instgroups.json`, cards with icon, version and loader
+- [x] 8b. Instances page: groups from `instgroups.json`, cards with icon, version and loader — the column (groups folding, remembered in `config.json` `minecraft`; search; Up/Down, Enter plays, a double click too) and the picked instance's banner (`components/InstanceHeader.qml`: its icon blurred into a wash until 8c brings screenshots, name, version and loader chips, playtime, Play, which works from 8c). Built-in Prism icons come from the `icon.png` Prism writes into the game folder. + opens Prism (`minecraft.prism`)
 - [ ] 8c. Instance page: Play (`prismlauncher -l <instance>`), playtime (Prism's own counters + ours), worlds, screenshots
 - [ ] 8d. Mods tab: list `mods/` with enable/disable (`.disabled`), open folder
 - [ ] 8e. Settings tab: RAM, Java, JVM args, window size (written to `instance.cfg`)

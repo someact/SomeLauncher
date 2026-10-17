@@ -91,6 +91,7 @@ impl State {
             "xxmi.mods" => self.xxmi_mods(params),
             "xxmi.setMod" => self.xxmi_set_mod(params),
             "xxmi.importTwintail" => self.xxmi_import_twintail(params).await,
+            "minecraft.prism" => self.minecraft_prism(params),
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,

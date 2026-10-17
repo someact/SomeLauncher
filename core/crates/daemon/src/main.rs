@@ -13,6 +13,7 @@ mod import;
 mod jobs;
 mod launch;
 mod meta;
+mod minecraft;
 mod monitor;
 mod needs_steam;
 mod power;

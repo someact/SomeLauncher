@@ -15,6 +15,7 @@ Singleton {
     readonly property alias motion: adapter.motion
     readonly property alias ui: adapter.ui
     readonly property alias home: adapter.home
+    readonly property alias minecraft: adapter.minecraft
     property bool ready: false
 
     FileView {
@@ -61,6 +62,10 @@ Singleton {
             }
             property JsonObject home: JsonObject {
                 property int recentDays: 30        // games not played for this long drop off Home (0: never); Library keeps them
+            }
+            property JsonObject minecraft: JsonObject {
+                property int selected: -1          // the instance open on the Minecraft page (a library game id)
+                property var collapsed: []         // Prism groups folded up in its instance column
             }
         }
     }
