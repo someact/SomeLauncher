@@ -9,6 +9,7 @@
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.core
 import qs.components
 
@@ -79,6 +80,49 @@ ShellRoot {
     function show() {
         hiddenForGame = false;
         win.visible = true;
+    }
+
+    // `qs -c somelauncher ipc call launcher <function>` (`qs -p ui/shell.qml ipc call …` from the repo).
+    // Not `show`: `qs ipc call x show` is read as `qs ipc show`.
+    IpcHandler {
+        target: "launcher"
+        function open(): void {
+            app.show();
+        }
+        function toggle(): void {
+            if (win.visible)
+                win.visible = false;
+            else
+                app.show();
+        }
+        function hideWindow(): void {
+            win.visible = false;
+        }
+        // home online library minecraft settings
+        function page(id: string): void {
+            app.page = id;
+            app.show();
+        }
+        function game(id: int): void {
+            app.show();
+            Nav.openGame(id, null);
+        }
+        function add(): void {
+            app.show();
+            Nav.addGame();
+        }
+        function play(id: int): void {
+            Library.play(id, undefined);
+        }
+        function state(): string {
+            return JSON.stringify({
+                visible: win.visible,
+                page: app.page,
+                game: Nav.gameId,
+                daemon: Daemon.ready,
+                running: Object.keys(Library.running).map(id => ({ id: Number(id), name: Library.byId[id] ? Library.byId[id].name : "", state: Library.running[id].state, since: Library.running[id].since ?? null }))
+            });
+        }
     }
 
     FloatingWindow {

@@ -15,6 +15,7 @@ scripts/dev.sh daemon           # somelauncherd in the foreground, debug log on 
 scripts/dev.sh ui [page]        # the UI from ui/ against the debug daemon (home online library minecraft settings); SOMELAUNCHER_GAME=<id> also opens that game's page
 scripts/dev.sh check [secs]     # load the UI and print QML warnings/errors; must print nothing
 core/target/debug/somelauncher list | play <game> | stop <game> | status | call <method> '<json>'   # talk to the daemon (started when not running)
+qs -p ui/shell.qml ipc call launcher open | toggle | hideWindow | page <id> | game <id> | add | play <id> | state   # the running UI (installed: qs -c somelauncher)
 ```
 - The UI starts the daemon itself when nobody answers on the socket (`SOMELAUNCHER_DAEMON`, set by dev.sh, else `somelauncherd` on PATH), and starts it again once per outage. A running daemon from an older build keeps answering: `somelauncher call shutdown` before testing daemon changes through the UI.
 - Isolated runs: point `XDG_DATA_HOME`/`XDG_STATE_HOME`/`XDG_CONFIG_HOME` at a temp dir and `SOMELAUNCHER_SOCKET` at a short path (unix socket paths max 107 bytes, the scratchpad is too long).
