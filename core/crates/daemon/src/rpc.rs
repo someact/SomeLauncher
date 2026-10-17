@@ -94,6 +94,8 @@ impl State {
             "minecraft.prism" => self.minecraft_prism(params),
             "minecraft.instance" => self.minecraft_instance(params),
             "minecraft.accounts" => self.minecraft_accounts(params),
+            "minecraft.mods" => self.minecraft_mods(params).await,
+            "minecraft.setMod" => self.minecraft_set_mod(params),
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,

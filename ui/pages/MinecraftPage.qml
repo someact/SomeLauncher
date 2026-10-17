@@ -345,12 +345,18 @@ Item {
                 game: root.game
                 info: root.info
             }
+            InstanceMods {
+                anchors.fill: parent
+                visible: root.tab === "mods"
+                active: visible
+                game: root.game
+            }
             Placeholder {
                 anchors.fill: parent
-                visible: root.tab === "mods" || root.tab === "settings"
-                icon: root.tab === "mods" ? "extension" : "tune"
-                title: root.tab === "mods" ? "Mods" : "Settings"
-                note: "Coming next (Phase " + (root.tab === "mods" ? "8d" : "8e") + ")"
+                visible: root.tab === "settings"
+                icon: "tune"
+                title: "Settings"
+                note: "Coming next (Phase 8e)"
             }
         }
 

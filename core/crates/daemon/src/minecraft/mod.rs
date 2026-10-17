@@ -3,6 +3,7 @@
 //! its files; we read them, change the few things the Minecraft page edits, and
 //! hand Prism what it does best (new instances, accounts, launching).
 
+pub mod mods;
 pub mod nbt;
 
 use crate::rpc::{State, internal};
@@ -283,6 +284,29 @@ impl State {
         let chosen = self.setting_str("minecraftAccount").map_err(internal)?.filter(|c| list.iter().any(|a| a["name"] == c.as_str()));
         let current = chosen.clone().or_else(|| list.iter().find(|a| a["active"] == true).and_then(|a| a["name"].as_str().map(String::from)));
         Ok(json!({ "accounts": list, "chosen": chosen, "current": current }))
+    }
+
+    /// `minecraft.mods {id}`: the instance's mods, by name (read off the async threads: a first look at 365 jars takes a while)
+    pub(crate) async fn minecraft_mods(&self, params: &Value) -> Result<Value, Error> {
+        let (_, inst) = self.instance(params)?;
+        let dir = inst.game_dir.join("mods");
+        let list = {
+            let dir = dir.clone();
+            tokio::task::spawn_blocking(move || mods::list(&dir, &mods::cache_dir())).await.map_err(|e| internal(e.into()))?
+        };
+        Ok(json!({ "dir": dir, "pack": managed_pack(&inst.dir), "mods": list }))
+    }
+
+    /// `minecraft.setMod {id, file, enabled}`: `{file}`, its new name. Not while the game runs
+    pub(crate) fn minecraft_set_mod(&self, params: &Value) -> Result<Value, Error> {
+        let (game, inst) = self.instance(params)?;
+        let file = params["file"].as_str().ok_or_else(|| Error::new("bad_params", "missing string `file`"))?;
+        let on = params["enabled"].as_bool().ok_or_else(|| Error::new("bad_params", "missing bool `enabled`"))?;
+        if self.running.lock().unwrap().contains_key(&game.id) || find_java(&inst.game_dir).is_some() {
+            return Err(Error::new("busy", format!("{} is running: mods change once it is closed", game.name)));
+        }
+        let to = mods::set_enabled(&inst.game_dir.join("mods"), file, on).map_err(|e| Error::new("bad_params", format!("{e:#}")))?;
+        Ok(json!({ "file": to }))
     }
 
     /// `minecraft.prism {id?}`: Prism's window, on that instance when given
