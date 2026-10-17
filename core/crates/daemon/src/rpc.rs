@@ -77,6 +77,7 @@ impl State {
                 "version": env!("CARGO_PKG_VERSION"),
                 "protocol": PROTOCOL,
                 "pid": std::process::id(),
+                "monitor": crate::monitor::current(),
                 "db": self.db_path,
             })),
             "power.status" => Ok(self.power_status().await),
@@ -438,6 +439,7 @@ impl State {
                 .unwrap_or_default(),
             offload: crate::gpu::offload(Path::new("/sys/class/drm")),
             tools: launch::WRAPPERS.iter().filter(|t| launch::which(t).is_some()).map(|t| t.to_string()).collect(),
+            monitor: crate::monitor::current(),
         })
     }
 

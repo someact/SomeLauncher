@@ -112,6 +112,9 @@ pub struct Runner {
     /// Run on the discrete GPU of a hybrid laptop; None: the global default (on when hybrid)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prime: Option<bool>,
+    /// A frame rate cap; None: the global default
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fps_cap: Option<FpsCap>,
     /// A shell command run before the game starts (with the game's env); a failure stops the launch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pre_launch: Option<String>,
@@ -158,6 +161,34 @@ pub struct Gamescope {
     pub args: Vec<String>,
 }
 
+/// A frame rate cap: `false` (none), `"monitor"` (the refresh rate of the
+/// monitor the game starts on) or a number of frames per second.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum FpsCap {
+    Off(bool),
+    Monitor(MonitorWord),
+    Fps(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MonitorWord {
+    Monitor,
+}
+
+impl FpsCap {
+    /// The cap in frames per second, given the monitor's refresh rate
+    pub fn fps(self, refresh: Option<u32>) -> Option<u32> {
+        match self {
+            FpsCap::Off(_) => None,
+            FpsCap::Monitor(_) => refresh,
+            FpsCap::Fps(0) => None,
+            FpsCap::Fps(n) => Some(n),
+        }
+    }
+}
+
 /// Global launch defaults (the `defaults` setting); a game's own runner fields win.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -167,6 +198,9 @@ pub struct Defaults {
     pub gamescope: Gamescope,
     /// None: on when the machine is a hybrid-GPU laptop
     pub prime: Option<bool>,
+    /// None: no cap
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fps_cap: Option<FpsCap>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

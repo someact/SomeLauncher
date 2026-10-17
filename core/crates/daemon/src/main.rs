@@ -11,6 +11,7 @@ mod import;
 mod jobs;
 mod launch;
 mod meta;
+mod monitor;
 mod needs_steam;
 mod power;
 mod proton;

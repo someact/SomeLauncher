@@ -28,12 +28,14 @@ Item {
     property bool desktopEntry: false
     property var logs: []
     property var plan: null
+    property var monitor: null               // where games start (status.monitor)
     property string error: ""
 
     function load() {
         error = "";
         plan = null;
         Daemon.call("settings.get", { key: "defaults" }, r => root.defaults = r ?? {});
+        Daemon.call("status", undefined, r => root.monitor = r ? r.monitor ?? null : null);
         Daemon.call("proton.list", undefined, r => {
             if (r)
                 root.protons = r;
@@ -292,9 +294,24 @@ Item {
                     }
                     GamescopeEditor {
                         width: parent.width
+                        monitor: root.monitor
                         visible: !!root.gamescope.enabled
                         value: root.gamescope
                         onEdited: v => root.setRunner({ gamescope: v })
+                    }
+                    SettingRow {
+                        below: true
+                        title: "FPS cap"
+                        note: {
+                            const d = root.defaults.fpsCap;
+                            return "Default: " + (d === "monitor" ? "the monitor's refresh" : d ? d + " fps" : "none");
+                        }
+                        FpsCapPicker {
+                            allowDefault: true
+                            value: root.runner.fpsCap ?? null
+                            refresh: root.monitor ? root.monitor.refresh : 0
+                            onEdited: v => root.setRunner({ fpsCap: v })
+                        }
                     }
                 }
 

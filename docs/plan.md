@@ -100,7 +100,7 @@ Dev note (2026-10-16): unix socket paths are limited to 107 bytes, so tests poin
 ## Phase 5: Profiles and SomeShell
 - [x] 5a. Power profile: `powerprofilesctl` to performance on launch (balanced on battery), restore the previous one on exit — through power-profiles-daemon's D-Bus API (`busctl`) rather than the CLI; follows the charger mid-game, leaves a profile the user picked, restores after a daemon crash (`powerRestore`). Tested on this PC and on `scripts/fake-upower.py`
 - [x] 5b. Battery bypass while gaming on AC (UPower `EnableChargeThreshold`, as SomeShell's `services/Battery.qml`), restored on exit; laptop only — tested on a fake UPower laptop (`scripts/fake-upower.py`); still to try once on the real laptop, since the driver decides what the threshold does. Both switches are in Settings → Launch defaults
-- [ ] 5c. Per-machine defaults: the gamescope size/refresh and FPS cap come from the monitor the window is on (`hyprctl monitors -j`)
+- [x] 5c. Per-machine defaults: the gamescope size/refresh and FPS cap come from the monitor the window is on (`hyprctl monitors -j`) — Hyprland's focused monitor at launch (the launcher's when Play is clicked there); `fpsCap` (`false`, `"monitor"`, a number) as a default and per game, through gamescope, else MangoHud, else DXVK/VKD3D
 - [ ] 5d. gamemoderun by default (SomeShell's `GameClients` then turns its game mode on); the launcher pauses video and animations, optionally closes or minimizes its window
 - [ ] 5e. SomeShell integration when present: island state for download progress and "Playing X" (IPC on the shell), an overlay card (recent games, playtime), `qs -c somelauncher ipc call ...` targets
 

@@ -330,7 +330,7 @@ Flickable {
 
         Card {
             title: "Launch defaults"
-            note: "This machine's profile: what every game starts from unless its own settings say otherwise"
+            note: "This machine's profile: what every game starts from unless its own settings say otherwise." + (root.status && root.status.monitor ? ` Games start on ${root.status.monitor.name}: ${root.status.monitor.width}×${root.status.monitor.height} at ${root.status.monitor.refresh} Hz.` : "")
             SettingRow {
                 below: true
                 title: "Proton"
@@ -387,9 +387,20 @@ Flickable {
             }
             GamescopeEditor {
                 width: parent.width
+                monitor: root.status ? root.status.monitor : null
                 visible: !!(root.defaults.gamescope && root.defaults.gamescope.enabled)
                 value: root.defaults.gamescope ?? {}
                 onEdited: v => root.setDefault("gamescope", v)
+            }
+            SettingRow {
+                below: true
+                title: "FPS cap"
+                note: "Through gamescope when it is on, else MangoHud (hidden), else DXVK for Windows games"
+                FpsCapPicker {
+                    value: root.defaults.fpsCap ?? null
+                    refresh: root.status && root.status.monitor ? root.status.monitor.refresh : 0
+                    onEdited: v => root.setDefault("fpsCap", v === false ? null : v)
+                }
             }
             SettingRow {
                 title: "Discrete GPU"

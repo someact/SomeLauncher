@@ -22,6 +22,8 @@ pub struct Context {
     pub offload: Option<crate::gpu::Offload>,
     /// Wrapper programs found on PATH (`gamescope`, `mangohud`, `gamemoderun`)
     pub tools: std::collections::BTreeSet<String>,
+    /// The monitor the game starts on: gamescope's sizes and the FPS cap follow it
+    pub monitor: Option<crate::monitor::Monitor>,
 }
 
 /// The wrapper programs `tools` is filled with.
@@ -158,6 +160,9 @@ pub fn plan(game: &Game, ctx: &Context) -> Result<Plan> {
 
 /// Wraps the command in the game's wrappers (or the defaults):
 /// `gamemoderun gamescope <opts> [--mangoapp] -- [mangohud] <command>`, and adds PRIME offload env.
+/// gamescope's empty sizes and refresh are the monitor's. An FPS cap goes to
+/// gamescope (`--framerate-limit`), else MangoHud (`fps_limit`, its overlay
+/// hidden unless it is on), else DXVK/VKD3D for wine games.
 /// A wrapper turned on for this game but missing is an error; one on by default but missing is skipped.
 fn wrap(game: &Game, ctx: &Context, command: Vec<String>, env: &mut BTreeMap<String, String>) -> Result<Vec<String>> {
     let (r, d) = (&game.runner, &ctx.defaults);
@@ -175,6 +180,10 @@ fn wrap(game: &Game, ctx: &Context, command: Vec<String>, env: &mut BTreeMap<Str
     let gamemode = r.gamemode.unwrap_or(d.gamemode) && available("gamemoderun", r.gamemode == Some(true))?;
     let gs = r.gamescope.as_ref().unwrap_or(&d.gamescope);
     let gamescope = gs.enabled && available("gamescope", r.gamescope.as_ref().is_some_and(|g| g.enabled))?;
+    let monitor = ctx.monitor.as_ref();
+    let cap = r.fps_cap.or(d.fps_cap).and_then(|c| c.fps(monitor.map(|m| m.refresh)));
+    // Without gamescope, MangoHud can still cap (hidden), when it is installed
+    let mangohud_cap = cap.is_some() && !gamescope && !mangohud && ctx.tools.contains("mangohud");
     if let Some(offload) = ctx.offload
         && r.prime.or(d.prime).unwrap_or(true)
     {
@@ -192,11 +201,12 @@ fn wrap(game: &Game, ctx: &Context, command: Vec<String>, env: &mut BTreeMap<Str
                 argv.extend([flag.to_string(), v.to_string()]);
             }
         };
-        opt("-W", gs.width);
-        opt("-H", gs.height);
+        opt("-W", gs.width.or(monitor.map(|m| m.width)));
+        opt("-H", gs.height.or(monitor.map(|m| m.height)));
         opt("-w", gs.game_width);
         opt("-h", gs.game_height);
-        opt("-r", gs.refresh);
+        opt("-r", gs.refresh.or(monitor.map(|m| m.refresh)));
+        opt("--framerate-limit", cap);
         if gs.fsr {
             argv.extend(["-F".into(), "fsr".into()]);
         }
@@ -212,8 +222,19 @@ fn wrap(game: &Game, ctx: &Context, command: Vec<String>, env: &mut BTreeMap<Str
             argv.push("--mangoapp".into());
         }
         argv.push("--".into());
-    } else if mangohud {
+    } else if mangohud || mangohud_cap {
         argv.push("mangohud".into());
+        if let Some(fps) = cap {
+            let config = if mangohud { format!("fps_limit={fps}") } else { format!("no_display,fps_limit={fps}") };
+            env.insert("MANGOHUD_CONFIG".into(), config);
+        }
+    } else if let Some(fps) = cap
+        && matches!(game.kind, Kind::Proton | Kind::Hoyo)
+    {
+        env.insert("DXVK_FRAME_RATE".into(), fps.to_string());
+        env.insert("VKD3D_FRAME_RATE".into(), fps.to_string());
+    } else if cap.is_some() {
+        tracing::warn!("{}: no way to cap the frame rate (install MangoHud or turn gamescope on)", game.name);
     }
     argv.extend(command);
     Ok(argv)
@@ -335,6 +356,7 @@ mod tests {
             defaults: Defaults::default(),
             offload: None,
             tools: WRAPPERS.iter().map(|t| t.to_string()).collect(),
+            monitor: Some(crate::monitor::Monitor { name: "DP-1".into(), width: 2560, height: 1440, refresh: 144 }),
         }
     }
 
@@ -485,5 +507,49 @@ mod tests {
         assert_eq!(prefix_root(None, &["/g".into()]), PathBuf::from("/g/Prefixes"));
         assert_eq!(folder_name("AC/DC .exe"), "AC_DC .exe");
         assert_eq!(folder_name("..."), "game");
+    }
+
+    #[test]
+    fn gamescope_takes_the_monitors_size_and_refresh_when_empty() {
+        let mut g = game(Kind::Proton);
+        g.runner.gamescope = Some(somelauncher_proto::game::Gamescope { enabled: true, height: Some(1080), ..Default::default() });
+        let argv = plan(&g, &ctx()).unwrap().argv;
+        let opts = &argv[..argv.iter().position(|a| a == "--").unwrap()];
+        assert_eq!(opts, ["gamescope", "-W", "2560", "-H", "1080", "-r", "144"]);
+    }
+
+    #[test]
+    fn an_fps_cap_goes_to_gamescope_else_mangohud_else_dxvk() {
+        use somelauncher_proto::game::{FpsCap, Gamescope, MonitorWord};
+        let mut g = game(Kind::Proton);
+        g.runner.fps_cap = Some(FpsCap::Monitor(MonitorWord::Monitor));
+        g.runner.gamescope = Some(Gamescope { enabled: true, ..Default::default() });
+        assert!(plan(&g, &ctx()).unwrap().argv.windows(2).any(|w| w == ["--framerate-limit", "144"]));
+
+        g.runner.gamescope = None;
+        let p = plan(&g, &ctx()).unwrap();
+        assert_eq!(p.argv[0], "mangohud");
+        assert_eq!(p.env["MANGOHUD_CONFIG"], "no_display,fps_limit=144");
+        g.runner.mangohud = Some(true);
+        assert_eq!(plan(&g, &ctx()).unwrap().env["MANGOHUD_CONFIG"], "fps_limit=144");
+
+        g.runner.mangohud = None;
+        g.runner.fps_cap = Some(FpsCap::Fps(60));
+        let mut c = ctx();
+        c.tools.remove("mangohud");
+        let p = plan(&g, &c).unwrap();
+        assert_eq!((p.env["DXVK_FRAME_RATE"].as_str(), p.env["VKD3D_FRAME_RATE"].as_str()), ("60", "60"));
+
+        // A game can turn a default cap off
+        c.defaults.fps_cap = Some(FpsCap::Fps(60));
+        g.runner.fps_cap = Some(FpsCap::Off(false));
+        assert!(!plan(&g, &c).unwrap().env.contains_key("DXVK_FRAME_RATE"));
+    }
+
+    #[test]
+    fn fps_caps_read_as_false_monitor_or_a_number() {
+        use somelauncher_proto::game::FpsCap;
+        let read = |s: &str| serde_json::from_str::<FpsCap>(s).unwrap().fps(Some(100));
+        assert_eq!((read("false"), read("\"monitor\""), read("75")), (None, Some(100), Some(75)));
     }
 }

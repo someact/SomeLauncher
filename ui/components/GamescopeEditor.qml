@@ -8,6 +8,7 @@ Column {
     id: gse
 
     property var value: ({})
+    property var monitor: null               // the status method's: empty sizes and refresh are its
     signal edited(var v)
     spacing: Theme.space.m
     function set(k, v) {
@@ -31,7 +32,7 @@ Column {
     }
     SText {
         width: parent.width
-        text: "Empty sizes use the monitor's. A game size under the output upscales" + (gse.value.fsr ? " with FSR." : ".")
+        text: "Empty sizes and refresh are the monitor's" + (gse.monitor ? ` (${gse.monitor.width}×${gse.monitor.height} at ${gse.monitor.refresh} Hz)` : "") + ". A game size under the output upscales" + (gse.value.fsr ? " with FSR." : ".")
         dim: true
         font.pixelSize: Theme.font.small
         wrapMode: Text.Wrap
