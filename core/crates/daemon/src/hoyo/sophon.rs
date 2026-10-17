@@ -95,71 +95,76 @@ pub struct Chunk {
     pub size_decompressed: u64,
 }
 
-/// A tiny protobuf reader: enough for the manifest's three messages
-struct Reader<'a>(&'a [u8]);
+pub mod proto {
+    use anyhow::{Context as _, Result, bail};
 
-impl<'a> Reader<'a> {
-    fn varint(&mut self) -> Result<u64> {
-        let mut v = 0u64;
-        for shift in (0..64).step_by(7) {
-            let (&b, rest) = self.0.split_first().context("truncated varint")?;
-            self.0 = rest;
-            v |= u64::from(b & 0x7f) << shift;
-            if b & 0x80 == 0 {
-                return Ok(v);
+    /// A tiny protobuf reader: enough for Sophon's manifests (and patch manifests)
+    pub struct Reader<'a>(pub &'a [u8]);
+
+    impl<'a> Reader<'a> {
+        pub fn varint(&mut self) -> Result<u64> {
+            let mut v = 0u64;
+            for shift in (0..64).step_by(7) {
+                let (&b, rest) = self.0.split_first().context("truncated varint")?;
+                self.0 = rest;
+                v |= u64::from(b & 0x7f) << shift;
+                if b & 0x80 == 0 {
+                    return Ok(v);
+                }
             }
+            bail!("varint too long")
         }
-        bail!("varint too long")
+        /// (field, wire type 0 → value, wire type 2 → bytes)
+        pub fn next(&mut self) -> Result<Option<(u64, Field<'a>)>> {
+            if self.0.is_empty() {
+                return Ok(None);
+            }
+            let key = self.varint()?;
+            let field = match key & 7 {
+                0 => Field::Int(self.varint()?),
+                1 => {
+                    let (b, rest) = self.0.split_at_checked(8).context("truncated fixed64")?;
+                    self.0 = rest;
+                    Field::Int(u64::from_le_bytes(b.try_into().unwrap()))
+                }
+                2 => {
+                    let len = self.varint()? as usize;
+                    let (b, rest) = self.0.split_at_checked(len).context("truncated field")?;
+                    self.0 = rest;
+                    Field::Bytes(b)
+                }
+                5 => {
+                    let (b, rest) = self.0.split_at_checked(4).context("truncated fixed32")?;
+                    self.0 = rest;
+                    Field::Int(u32::from_le_bytes(b.try_into().unwrap()).into())
+                }
+                t => bail!("protobuf wire type {t}"),
+            };
+            Ok(Some((key >> 3, field)))
+        }
     }
-    /// (field, wire type 0 → value, wire type 2 → bytes)
-    fn next(&mut self) -> Result<Option<(u64, Field<'a>)>> {
-        if self.0.is_empty() {
-            return Ok(None);
+
+    pub enum Field<'a> {
+        Int(u64),
+        Bytes(&'a [u8]),
+    }
+
+    impl Field<'_> {
+        pub fn text(&self) -> String {
+            match self {
+                Field::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
+                Field::Int(_) => String::new(),
+            }
         }
-        let key = self.varint()?;
-        let field = match key & 7 {
-            0 => Field::Int(self.varint()?),
-            1 => {
-                let (b, rest) = self.0.split_at_checked(8).context("truncated fixed64")?;
-                self.0 = rest;
-                Field::Int(u64::from_le_bytes(b.try_into().unwrap()))
+        pub fn int(&self) -> u64 {
+            match self {
+                Field::Int(v) => *v,
+                Field::Bytes(_) => 0,
             }
-            2 => {
-                let len = self.varint()? as usize;
-                let (b, rest) = self.0.split_at_checked(len).context("truncated field")?;
-                self.0 = rest;
-                Field::Bytes(b)
-            }
-            5 => {
-                let (b, rest) = self.0.split_at_checked(4).context("truncated fixed32")?;
-                self.0 = rest;
-                Field::Int(u32::from_le_bytes(b.try_into().unwrap()).into())
-            }
-            t => bail!("protobuf wire type {t}"),
-        };
-        Ok(Some((key >> 3, field)))
+        }
     }
 }
-
-enum Field<'a> {
-    Int(u64),
-    Bytes(&'a [u8]),
-}
-
-impl Field<'_> {
-    fn text(&self) -> String {
-        match self {
-            Field::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
-            Field::Int(_) => String::new(),
-        }
-    }
-    fn int(&self) -> u64 {
-        match self {
-            Field::Int(v) => *v,
-            Field::Bytes(_) => 0,
-        }
-    }
-}
+use proto::{Field, Reader};
 
 fn chunk(bytes: &[u8]) -> Result<Chunk> {
     let mut c = Chunk { name: String::new(), md5: String::new(), offset: 0, size: 0, size_decompressed: 0 };
@@ -310,17 +315,9 @@ async fn fetch_chunk(http: &reqwest::Client, cat: &Category, c: &Chunk) -> Resul
     Err(last.unwrap()).with_context(|| format!("chunk {}", c.name))
 }
 
-/// Downloads every file of `categories` into `dir`, resuming from the log in
-/// `dir/.somelauncher/<log>`. Files are made at their full size and filled in
-/// place. Progress is in downloaded bytes, over all categories together.
-pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path, log: &str, progress: &Progress) -> Result<()> {
-    let state = dir.join(STATE_DIR);
-    std::fs::create_dir_all(&state).with_context(|| format!("creating {}", state.display()))?;
-    let log_path = state.join(log);
-    let done = read_log(&log_path);
-
-    // ZZZ has over a hundred categories: their manifests come a few at a time
-    let manifests: Vec<Result<Vec<Asset>>> = futures_util::stream::iter(categories.to_vec())
+/// The manifests of several categories, a few at a time (ZZZ has over a hundred)
+pub async fn manifests(http: &reqwest::Client, categories: &[Category]) -> Result<Vec<(Category, Vec<Asset>)>> {
+    let got: Vec<Result<Vec<Asset>>> = futures_util::stream::iter(categories.to_vec())
         .map(|cat| {
             let http = http.clone();
             async move { manifest(&http, &cat).await.with_context(|| format!("the {} manifest", cat.field)) }
@@ -328,10 +325,34 @@ pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path
         .buffered(8)
         .collect()
         .await;
-    let mut works = Vec::new();
-    for (cat, assets) in categories.iter().zip(manifests) {
-        works.push((cat.clone(), plan_work(assets?, &done)));
-    }
+    categories.iter().cloned().zip(got).map(|(c, a)| Ok((c, a?))).collect()
+}
+
+/// Where a file being replaced is built before it takes the real name
+pub fn staged_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".sophon");
+    path.with_file_name(name)
+}
+
+/// Downloads every file of `categories` into `dir`, resuming from the log in
+/// `dir/.somelauncher/<log>`. Files are made at their full size and filled in
+/// place. Progress is in downloaded bytes, over all categories together.
+pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path, log: &str, progress: &Progress) -> Result<()> {
+    let sets = manifests(http, categories).await?;
+    fetch_files(http, sets, dir, log, false, progress).await
+}
+
+/// Fetches the given files of each category, chunk by chunk. `staged`: each
+/// file is built beside its old copy (`<name>.sophon`) and takes its place
+/// once complete (updates and repairs, where the old file must stay usable
+/// until then); else files are filled in place (new installs).
+pub async fn fetch_files(http: &reqwest::Client, sets: Vec<(Category, Vec<Asset>)>, dir: &Path, log: &str, staged: bool, progress: &Progress) -> Result<()> {
+    let state = dir.join(STATE_DIR);
+    std::fs::create_dir_all(&state).with_context(|| format!("creating {}", state.display()))?;
+    let log_path = state.join(log);
+    let done = read_log(&log_path);
+    let works: Vec<(Category, Work)> = sets.into_iter().map(|(c, a)| (c, plan_work(a, &done))).collect();
     let total: u64 = works.iter().map(|(_, w)| w.total_bytes).sum();
     let need: u64 = works.iter().map(|(_, w)| w.files.iter().map(|a| a.size).sum::<u64>()).sum();
     let have = works.iter().map(|(_, w)| w.done_bytes).sum::<u64>();
@@ -342,13 +363,17 @@ pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path
         bail!("not enough space: {} GB needed, {} GB free", need / 1_000_000_000 + 1, free / 1_000_000_000);
     }
 
+    let target = move |dir: &Path, name: &str| -> Result<PathBuf> {
+        let p = asset_path(dir, name)?;
+        Ok(if staged { staged_path(&p) } else { p })
+    };
     let counter = Arc::new(std::sync::atomic::AtomicU64::new(have));
     progress.update(have, total);
     let log_file = Arc::new(Mutex::new(std::fs::OpenOptions::new().create(true).append(true).open(&log_path)?));
     for (cat, work) in works {
         // Every file at its size first (and its folder), so chunks can land anywhere in it
         for a in &work.files {
-            let path = asset_path(dir, &a.name)?;
+            let path = target(dir, &a.name)?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -367,7 +392,7 @@ pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path
                     let a = &work.files[ai];
                     let c = &a.chunks[ci];
                     let data = fetch_chunk(&http, &cat, c).await?;
-                    let path = asset_path(&dir, &a.name)?;
+                    let path = target(&dir, &a.name)?;
                     let offset = c.offset;
                     tokio::task::spawn_blocking(move || -> Result<()> {
                         std::fs::OpenOptions::new().write(true).open(&path)?.write_all_at(&data, offset)?;
@@ -384,13 +409,22 @@ pub async fn install(http: &reqwest::Client, categories: &[Category], dir: &Path
         while let Some(r) = tasks.next().await {
             r?;
         }
+        if staged {
+            for a in &work.files {
+                let real = asset_path(dir, &a.name)?;
+                let staged = staged_path(&real);
+                // Gone already: a run before this one finished it
+                if staged.exists() {
+                    std::fs::rename(&staged, &real).with_context(|| format!("replacing {}", a.name))?;
+                }
+            }
+        }
     }
     Ok(())
 }
 
 /// Checks every file of a manifest against its size and md5 (repair, 6d):
 /// the names of the ones that do not match
-#[allow(dead_code)] // repair (6d)
 pub async fn verify(assets: &[Asset], dir: &Path, progress: &Progress) -> Result<Vec<String>> {
     let total: u64 = assets.iter().filter(|a| !a.dir).map(|a| a.size).sum();
     let mut done = 0u64;

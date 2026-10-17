@@ -48,7 +48,7 @@ pub enum SourceKind {
     /// Added by hand or found by a folder scan
     Manual,
     /// A Genshin Impact or Zenless Zone Zero install SomeLauncher manages (Phase 6):
-    /// source id is the HoYoPlay biz, `data` `{biz, version, voices}`
+    /// source id is the install folder, `data` `{biz, version, voices, installing?}`
     Hoyo,
 }
 

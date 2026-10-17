@@ -5,7 +5,9 @@
 pub mod api;
 pub mod files;
 pub mod install;
+pub mod manage;
 pub mod sophon;
+pub mod update;
 
 use crate::rpc::{State, internal};
 use serde_json::{Value, json};
@@ -70,6 +72,12 @@ impl State {
     }
 }
 
+/// A `hoyo` source's id: its install folder (one game can be installed twice;
+/// source ids are unique per kind)
+pub fn source_id(dir: &Path) -> String {
+    dir.to_string_lossy().into_owned()
+}
+
 pub fn name_of(biz: &str) -> &'static str {
     if api::game_of(biz) == "nap" { "Zenless Zone Zero" } else { "Genshin Impact" }
 }
@@ -109,7 +117,7 @@ impl State {
             }
         };
         let data = json!({ "biz": install.biz, "version": install.version, "voices": install.voices });
-        crate::games::set_source(&db, id, &Source { source: SourceKind::Hoyo, source_id: install.biz.clone(), data })?;
+        crate::games::set_only_source(&db, id, &Source { source: SourceKind::Hoyo, source_id: source_id(&install.dir), data })?;
         crate::meta::tags::retag(&db, id)?;
         tracing::info!(id, biz = install.biz, version = ?install.version, "adopted {}", install.dir.display());
         Ok(id)

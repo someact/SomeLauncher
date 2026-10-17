@@ -88,7 +88,8 @@ impl State {
                 let (Some(src), Some(inst), Some(dir)) = (src, installing, g.install_dir.clone()) else {
                     return Err(Error::new("not_found", format!("{} has no install to resume", g.name)));
                 };
-                Some((src.source_id, dir, serde_json::from_value::<Vec<String>>(inst["voices"].clone()).unwrap_or_default()))
+                let biz = src.data["biz"].as_str().unwrap_or_default().to_string();
+                Some((biz, dir, serde_json::from_value::<Vec<String>>(inst["voices"].clone()).unwrap_or_default()))
             }
             None => None,
         };
@@ -153,7 +154,7 @@ impl State {
             }
         };
         let data = json!({ "biz": biz, "version": null, "voices": [], "installing": { "version": tag, "voices": voices } });
-        crate::games::set_source(&db, id, &Source { source: SourceKind::Hoyo, source_id: biz.into(), data })?;
+        crate::games::set_only_source(&db, id, &Source { source: SourceKind::Hoyo, source_id: super::source_id(dir), data })?;
         Ok(id)
     }
 }

@@ -266,6 +266,12 @@ pub fn set_source(conn: &Connection, id: i64, s: &Source) -> Result<()> {
     Ok(())
 }
 
+/// Makes `s` the game's only source of its kind (a Hoyo game has one install record).
+pub fn set_only_source(conn: &Connection, id: i64, s: &Source) -> Result<()> {
+    conn.execute("DELETE FROM game_sources WHERE game_id = ?1 AND source = ?2 AND source_id != ?3", params![id, s.source.as_str(), s.source_id])?;
+    set_source(conn, id, s)
+}
+
 /// The game a source entry belongs to, if it was imported before.
 pub fn by_source(conn: &Connection, source: SourceKind, source_id: &str) -> Result<Option<i64>> {
     Ok(conn

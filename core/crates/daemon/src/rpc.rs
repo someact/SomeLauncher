@@ -86,6 +86,10 @@ impl State {
             "hoyo.adopt" => self.hoyo_adopt(params),
             "hoyo.plan" => self.hoyo_plan(params).await,
             "hoyo.install" => self.hoyo_install(params).await,
+            "hoyo.updatePlan" => self.hoyo_update_plan(params).await,
+            "hoyo.update" => self.hoyo_update(params).await,
+            "hoyo.preload" => self.hoyo_preload(params).await,
+            "hoyo.repair" => self.hoyo_repair(params).await,
             "settings.get" => {
                 let db = self.db.lock().unwrap();
                 match params.get("key").and_then(Value::as_str) {
